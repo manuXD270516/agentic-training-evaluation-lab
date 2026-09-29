@@ -17,7 +17,8 @@
 
 - [x] 3.1 Implementar contratos y baseline scripted con eventos mínimos (agent-execution, trace-capture); verificar resultado offline con evidencia y estado terminal.
   - Evidencia: pytest local 130 passed (2026-09-29), incluidos runner scripted sin ModelGateway, tool denegada, patrón diferido, replay no implementado, integridad de event_id, run `completed` con `usage.model_calls=0` y etiqueta `scripted`, `GET /runs/{id}/trace` sellada sin oráculo, y claim `SKIP LOCKED` sobre DB vacía.
-- [ ] 3.2 Implementar gateway de tools, validación y aislamiento de fixtures (agent-execution); verificar tool prohibida, argumentos incorrectos y ausencia de estado compartido.
+- [x] 3.2 Implementar gateway de tools, validación y aislamiento de fixtures (agent-execution); verificar tool prohibida, argumentos incorrectos y ausencia de estado compartido.
+  - Evidencia: pytest local 155 passed (2026-09-29): tool fuera del escenario, fuera del agente, desconocida o ambigua denegada con `policy.violation` y sin ejecución mientras el run sigue; argumentos con tipo, enum, campo faltante o extra rechazados por JSON Schema sin ejecutar ni cambiar estado; dos runs con la misma tool con efectos parten del mismo estado inicial y la fixture publicada no cambia; fixture inválida, sin caso, con resultado fuera de `output_schema` o `state_patch` en tool read_only fallan como `infrastructure_error`; refs remotas de schema no se resuelven.
 - [ ] 3.3 Implementar límites, timeouts, retries y leases/fencing (agent-execution); verificar corte por presupuesto y worker vencido sin efectos duplicados.
 
 ## 4. M3 — Deterministic evals

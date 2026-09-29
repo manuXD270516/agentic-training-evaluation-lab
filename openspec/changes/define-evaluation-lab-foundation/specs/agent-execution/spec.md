@@ -24,6 +24,10 @@ El sistema SHALL validar identidad, argumentos y autorización antes de invocar 
 - **WHEN** el agente solicita una acción prohibida
 - **THEN** se deniega y registra una violación aunque el resultado final sea correcto.
 
+#### Scenario: Isolated fixture state
+- **WHEN** dos runs invocan la misma tool con efectos sobre la misma fixture
+- **THEN** cada run parte del estado inicial del escenario y los cambios de uno no son visibles en el otro ni alteran la fixture publicada.
+
 ### Requirement: Bounded execution and retries
 
 El runner SHALL aplicar límites de pasos, llamadas, tokens, tiempo y coste estimado cuando configurado; SHALL registrar todos los retries y no repetir efectos ambiguos sin reconciliación.

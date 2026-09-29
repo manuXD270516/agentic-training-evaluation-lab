@@ -14,10 +14,6 @@ class InvalidScriptError(RunnerError):
     error_class = "invalid_arguments"
 
 
-class ToolDeniedError(RunnerError):
-    error_class = "denied"
-
-
 class ModelNotAllowedError(RunnerError):
     pass
 

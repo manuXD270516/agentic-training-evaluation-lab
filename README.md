@@ -2,7 +2,7 @@
 
 Laboratorio para medir éxito, herramientas, argumentos, evidencia, recuperación, latencia y coste de sistemas agénticos mediante experimentos reproducibles.
 
-**Estado: M0–M1 y tarea 3.1 de M2: contratos del runner, baseline scripted offline, eventos mínimos sellados en `Trace`/`TraceEvent` y worker que toma celdas `queued`. Todavía no hay gateway real de tools (3.2), leases/fencing (3.3), dataset piloto de 14 casos (M5), métricas calculadas ni resultados de negocio.**
+**Estado: M0–M1 y tareas 3.1–3.2 de M2: contratos del runner, baseline scripted offline, gateway de tools sobre fixtures declarativas con validación JSON Schema, allowlist y estado aislado por run, eventos sellados en `Trace`/`TraceEvent` y worker que toma celdas `queued`. Todavía no hay límites, timeouts, retries ni leases/fencing (3.3), dataset piloto de 14 casos (M5), métricas calculadas ni resultados.**
 
 API disponible (localhost:8000; esquema OpenAPI en `/docs`):
 
@@ -39,7 +39,7 @@ Las specs del change describen comportamiento futuro. `openspec/specs` permanece
 backend/                 Python 3.14.7 + uv (paquete `evallab`)
   src/evallab/api/       Control plane FastAPI: /health, /health/ready
   src/evallab/worker/    Worker: heartbeat, polling SKIP LOCKED, /health; leases/fencing en 3.3
-  src/evallab/runner/    Contratos, sink en memoria y patrón scripted
+  src/evallab/runner/    Contratos, sink en memoria, patrón scripted y gateway de tools
   src/evallab/settings.py  Configuración por entorno y SandboxPolicy (red denegada)
   src/evallab/domain/    Máquinas de estados y vocabularios cerrados del design
   src/evallab/db/        Modelos SQLAlchemy, migraciones Alembic y `evallab-migrate`

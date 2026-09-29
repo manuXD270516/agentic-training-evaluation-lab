@@ -22,8 +22,6 @@ class ToolStep(StrictModel):
     type: Literal["tool"]
     tool: str = Field(min_length=1)
     arguments: JsonObject = Field(default_factory=dict)
-    result: JsonValue
-    evidence_id: str | None = None
 
 
 class FinalStep(StrictModel):
@@ -79,12 +77,7 @@ class ScriptedPatternAdapter:
         step = self._steps[self._index]
         self._index += 1
         if isinstance(step, ToolStep):
-            return ToolCall(
-                tool=step.tool,
-                arguments=step.arguments,
-                result=step.result,
-                evidence_id=step.evidence_id,
-            )
+            return ToolCall(tool=step.tool, arguments=step.arguments)
         return FinalAnswer(output=step.output)
 
 

@@ -7,23 +7,26 @@ from evallab.domain.lifecycle import RunStatus
 from evallab.runner.agent import execute_agent
 from evallab.runner.contracts import AgentSnapshot, AllowedTool, RunContext
 from evallab.runner.errors import TraceIntegrityError
-from evallab.runner.gateways import DeniedModelGateway, DeniedToolGateway
+from evallab.runner.gateways import DeniedModelGateway
 from evallab.runner.sink import MemoryTraceSink
+from evallab.runner.tools import FixtureToolGateway
 from evallab.schemas import ScenarioPublicOut
 from evallab.settings import SandboxPolicy
+from tests.test_tools import ADD, binding
 
 DIGEST = "a" * 64
+ADD_STEP = {"type": "tool", "tool": "calculator", "arguments": ADD}
+FINAL_STEP = {"type": "final", "output": {"total": 42}}
 
 
-def _context() -> RunContext:
-    now = datetime.now(UTC)
+def _context(mode: str = "live") -> RunContext:
     return RunContext(
         run_id=uuid.uuid4(),
         attempt_id=uuid.uuid4(),
         experiment_id=uuid.uuid4(),
-        mode="live",
+        mode="replay" if mode == "replay" else "live",
         seed=11,
-        started_at=now,
+        started_at=datetime.now(UTC),
         limits={"max_steps": 4},
         sandbox=SandboxPolicy(),
         manifest_hash=DIGEST,
@@ -50,18 +53,11 @@ def _scenario() -> ScenarioPublicOut:
 
 
 def _agent(
-    *, pattern: str = "scripted", pattern_parameters: dict[str, Any] | None = None
+    *script: dict[str, Any],
+    pattern: str = "scripted",
+    pattern_parameters: dict[str, Any] | None = None,
 ) -> AgentSnapshot:
-    script = [
-        {
-            "type": "tool",
-            "tool": "calculator",
-            "arguments": {"a": 40, "b": 2},
-            "result": {"total": 42},
-            "evidence_id": "e1",
-        },
-        {"type": "final", "output": {"total": 42, "evidence_ids": ["e1"]}},
-    ]
+    steps = list(script) or [ADD_STEP, FINAL_STEP]
     return AgentSnapshot(
         id=uuid.uuid4(),
         version="1.0.0",
@@ -69,7 +65,7 @@ def _agent(
         pattern_version="1.0.0",
         content_hash=DIGEST,
         pattern_parameters=(
-            pattern_parameters if pattern_parameters is not None else {"script": script}
+            pattern_parameters if pattern_parameters is not None else {"script": steps}
         ),
         prompt_hash=None,
         roles=("executor",),
@@ -85,8 +81,12 @@ def _sink(context: RunContext) -> MemoryTraceSink:
     )
 
 
-def _calculator() -> AllowedTool:
-    return AllowedTool(id=uuid.uuid4(), version="1.0.0", name="calculator", content_hash=DIGEST)
+def _tools() -> FixtureToolGateway:
+    return FixtureToolGateway([binding()])
+
+
+def _types(sink: MemoryTraceSink) -> list[str]:
+    return [event.type for event in sink.events]
 
 
 class RecordingModel:
@@ -101,22 +101,37 @@ class RecordingModel:
 def test_scripted_run_emits_tool_evidence_without_model_calls() -> None:
     context = _context()
     model = RecordingModel()
-    result = execute_agent(
-        context,
-        _agent(),
-        _scenario(),
-        [_calculator()],
-        model,
-        DeniedToolGateway(),
-        _sink(context),
-    )
+    sink = _sink(context)
+    result = execute_agent(context, _agent(), _scenario(), model, _tools(), sink)
     assert result.status == RunStatus.COMPLETED
     assert result.pattern == "scripted"
-    assert result.usage.model_calls == 0
-    assert result.usage.tool_calls == 1
-    assert result.output == {"total": 42, "evidence_ids": ["e1"]}
-    assert result.evidence_refs
+    assert (result.usage.model_calls, result.usage.tool_calls) == (0, 1)
+    assert result.output == {"total": 42}
+    assert result.policy_violations == 0
     assert model.calls == 0
+
+    completed = next(e for e in sink.events if e.type == "tool.completed")
+    assert completed.payload["result"] == {"total": 42}
+    assert completed.payload["evidence_ids"] == [str(completed.event_id)]
+    assert completed.payload["state_digest"]
+    assert [ref.as_json() for ref in result.evidence_refs] == [
+        {"event_id": str(completed.event_id), "pointer": "/result"}
+    ]
+    assert _types(sink)[-1] == "run.completed"
+
+
+def test_script_steps_cannot_supply_their_own_results() -> None:
+    context = _context()
+    forged = {**ADD_STEP, "result": {"total": 42}}
+    result = execute_agent(
+        context,
+        _agent(forged, FINAL_STEP),
+        _scenario(),
+        DeniedModelGateway(),
+        _tools(),
+        _sink(context),
+    )
+    assert (result.status, result.error_class) == (RunStatus.FAILED, "invalid_arguments")
 
 
 def test_scripted_run_does_not_see_oracle_fields() -> None:
@@ -126,45 +141,68 @@ def test_scripted_run_does_not_see_oracle_fields() -> None:
     for leaked in ("expected", "oracle_ref", "qrels", "split", "family_id", "fault_schedule"):
         assert leaked not in dumped
     sink = _sink(context)
-    execute_agent(
-        context,
-        _agent(),
-        scenario,
-        [_calculator()],
-        DeniedModelGateway(),
-        DeniedToolGateway(),
-        sink,
-    )
-    blob = str([event.payload for event in sink.events])
-    assert "SECRET_ORACLE" not in blob
-    assert "expected" not in blob
+    execute_agent(context, _agent(), scenario, DeniedModelGateway(), _tools(), sink)
+    assert "expected" not in str([event.payload for event in sink.events])
 
 
-def test_unknown_tool_is_denied_and_recorded() -> None:
+def test_forbidden_tool_is_denied_recorded_and_run_continues() -> None:
     context = _context()
     sink = _sink(context)
+    shell = {"type": "tool", "tool": "shell", "arguments": {"cmd": "id"}}
     result = execute_agent(
-        context, _agent(), _scenario(), [], DeniedModelGateway(), DeniedToolGateway(), sink
+        context,
+        _agent(shell, ADD_STEP, FINAL_STEP),
+        _scenario(),
+        DeniedModelGateway(),
+        _tools(),
+        sink,
     )
-    assert result.status == RunStatus.FAILED
-    assert result.error_class == "denied"
-    assert [event.type for event in sink.events if event.type.startswith("tool.")] == [
-        "tool.requested",
-        "tool.denied",
+    assert result.status == RunStatus.COMPLETED
+    assert result.output == {"total": 42}
+    assert result.policy_violations == 1
+    assert result.usage.tool_calls == 1
+
+    denied = next(e for e in sink.events if e.type == "tool.denied")
+    violation = next(e for e in sink.events if e.type == "policy.violation")
+    requested = next(e for e in sink.events if e.type == "tool.requested")
+    assert requested.payload["tool"] == "shell"
+    assert denied.payload["policy_result"] == "denied"
+    assert denied.payload["reason_codes"] == ["unknown_tool"]
+    assert violation.payload["executed"] is False
+    assert violation.payload["evidence_refs"] == [
+        {"event_id": str(requested.event_id), "pointer": "/tool"}
     ]
+    assert sum(1 for t in _types(sink) if t == "tool.completed") == 1
+
+
+def test_invalid_arguments_are_kept_in_trace_and_not_executed() -> None:
+    context = _context()
+    sink = _sink(context)
+    wrong = {"type": "tool", "tool": "calculator", "arguments": {**ADD, "a": "40"}}
+    result = execute_agent(
+        context, _agent(wrong, FINAL_STEP), _scenario(), DeniedModelGateway(), _tools(), sink
+    )
+    assert result.status == RunStatus.COMPLETED
+    assert result.usage.tool_calls == 0
+    assert result.policy_violations == 0
+    assert result.evidence_refs == ()
+    denied = next(e for e in sink.events if e.type == "tool.denied")
+    assert denied.payload["schema_result"] == "invalid"
+    assert denied.payload["error_class"] == "invalid_arguments"
+    assert denied.payload["schema_errors"] == [{"path": "/a", "keyword": "type"}]
+    assert "tool.completed" not in _types(sink)
+    assert "tool.validated" not in _types(sink)
 
 
 def test_deferred_pattern_is_not_presented_as_implemented() -> None:
     context = _context()
-    sink = _sink(context)
     result = execute_agent(
         context,
         _agent(pattern="react", pattern_parameters={}),
         _scenario(),
-        [_calculator()],
         DeniedModelGateway(),
-        DeniedToolGateway(),
-        sink,
+        _tools(),
+        _sink(context),
     )
     assert result.status == RunStatus.FAILED
     assert result.error_class == "infrastructure_error"
@@ -173,35 +211,16 @@ def test_deferred_pattern_is_not_presented_as_implemented() -> None:
 
 
 def test_replay_is_not_implemented() -> None:
-    live = _context()
-    replay = RunContext(
-        run_id=live.run_id,
-        attempt_id=live.attempt_id,
-        experiment_id=live.experiment_id,
-        mode="replay",
-        seed=live.seed,
-        started_at=live.started_at,
-        limits=live.limits,
-        sandbox=live.sandbox,
-        manifest_hash=live.manifest_hash,
-        experiment_budgets=live.experiment_budgets,
-    )
+    context = _context("replay")
     result = execute_agent(
-        replay,
-        _agent(),
-        _scenario(),
-        [_calculator()],
-        DeniedModelGateway(),
-        DeniedToolGateway(),
-        _sink(replay),
+        context, _agent(), _scenario(), DeniedModelGateway(), _tools(), _sink(context)
     )
     assert result.status == RunStatus.FAILED
     assert "replay" in (result.error or "")
 
 
 def test_duplicate_event_id_same_digest_is_idempotent() -> None:
-    context = _context()
-    sink = _sink(context)
+    sink = _sink(_context())
     event_id = uuid.uuid4()
     first = sink.append("run.started", "harness", {"mode": "live"}, event_id=event_id)
     second = sink.append("run.started", "harness", {"mode": "live"}, event_id=event_id)
@@ -210,8 +229,7 @@ def test_duplicate_event_id_same_digest_is_idempotent() -> None:
 
 
 def test_duplicate_event_id_conflicting_digest_is_invalid() -> None:
-    context = _context()
-    sink = _sink(context)
+    sink = _sink(_context())
     event_id = uuid.uuid4()
     sink.append("run.started", "harness", {"mode": "live"}, event_id=event_id)
     try:

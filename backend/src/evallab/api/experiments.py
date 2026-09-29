@@ -14,8 +14,8 @@ from evallab.schemas import (
     RunOut,
     TraceOut,
 )
-from evallab.services import experiments as svc
 from evallab.services import execution as execution_svc
+from evallab.services import experiments as svc
 from evallab.services.errors import ExperimentNotSealedError
 from evallab.services.idempotency import run_idempotent
 

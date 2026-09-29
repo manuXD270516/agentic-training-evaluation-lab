@@ -21,8 +21,9 @@ from evallab.domain.vocabulary import TRACE_SCHEMA_VERSION
 from evallab.runner.agent import execute_agent
 from evallab.runner.contracts import AgentSnapshot, AllowedTool, RunContext, RunResult, Usage
 from evallab.runner.errors import RunnerError
-from evallab.runner.gateways import DeniedModelGateway, DeniedToolGateway
+from evallab.runner.gateways import DeniedModelGateway
 from evallab.runner.sink import MemoryTraceSink, mark_incomplete
+from evallab.runner.tools import FixtureToolGateway, ToolBinding
 from evallab.services.catalog import scenario_public_view
 from evallab.services.errors import NotFoundError
 from evallab.settings import SandboxPolicy
@@ -59,31 +60,56 @@ def _agent_snapshot(db: Session, cfg: m.AgentConfiguration) -> AgentSnapshot:
     )
 
 
-def _allowed_tools(
-    db: Session, scenario: m.Scenario, agent: m.AgentConfiguration
-) -> list[AllowedTool]:
-    linked = {
-        (row.tool_id, row.tool_version)
-        for row in db.scalars(
-            select(m.AgentTool).where(
-                m.AgentTool.agent_id == agent.id, m.AgentTool.agent_version == agent.version
-            )
-        )
-    }
-    allowed: list[AllowedTool] = []
+def _scenario_tools(db: Session, scenario: m.Scenario) -> list[m.ToolDefinition]:
+    tools: list[m.ToolDefinition] = []
     raw = scenario.tools if isinstance(scenario.tools, list) else []
     for item in raw:
         if not isinstance(item, dict) or "id" not in item or "version" not in item:
             continue
         tool = db.get(m.ToolDefinition, (uuid.UUID(str(item["id"])), str(item["version"])))
-        if tool is None or (tool.id, tool.version) not in linked:
-            continue
-        allowed.append(
-            AllowedTool(
-                id=tool.id, version=tool.version, name=tool.name, content_hash=tool.content_hash
-            )
+        if tool is not None:
+            tools.append(tool)
+    return tools
+
+
+def _agent_tools(db: Session, agent: m.AgentConfiguration) -> list[m.ToolDefinition]:
+    rows = db.scalars(
+        select(m.AgentTool).where(
+            m.AgentTool.agent_id == agent.id, m.AgentTool.agent_version == agent.version
         )
-    return allowed
+    )
+    tools = (db.get(m.ToolDefinition, (row.tool_id, row.tool_version)) for row in rows)
+    return [tool for tool in tools if tool is not None]
+
+
+def _binding(db: Session, tool: m.ToolDefinition) -> ToolBinding:
+    fixture = db.get(m.Fixture, tool.fixture_hash) if tool.fixture_hash else None
+    return ToolBinding(
+        tool=AllowedTool(
+            id=tool.id, version=tool.version, name=tool.name, content_hash=tool.content_hash
+        ),
+        input_schema=tool.input_schema if isinstance(tool.input_schema, dict) else {},
+        output_schema=tool.output_schema if isinstance(tool.output_schema, dict) else {},
+        effect_class=tool.effect_class,
+        fixture=fixture.payload if fixture is not None else None,
+    )
+
+
+def _tool_gateway(
+    db: Session, scenario: m.Scenario, agent: m.AgentConfiguration
+) -> FixtureToolGateway:
+    in_scenario = _scenario_tools(db, scenario)
+    in_agent = _agent_tools(db, agent)
+    scenario_keys = {(t.id, t.version) for t in in_scenario}
+    agent_keys = {(t.id, t.version) for t in in_agent}
+    environment = scenario.environment if isinstance(scenario.environment, dict) else {}
+    initial_state = environment.get("initial_state")
+    return FixtureToolGateway(
+        [_binding(db, t) for t in in_scenario if (t.id, t.version) in agent_keys],
+        scenario_only={t.name for t in in_scenario if (t.id, t.version) not in agent_keys},
+        agent_only={t.name for t in in_agent if (t.id, t.version) not in scenario_keys},
+        initial_state=initial_state if isinstance(initial_state, dict) else {},
+    )
 
 
 def _result_document(result: RunResult) -> dict[str, Any]:
@@ -97,6 +123,7 @@ def _result_document(result: RunResult) -> dict[str, Any]:
         "output": result.output,
         "evidence_refs": [ref.as_json() for ref in result.evidence_refs],
         "usage": result.usage.as_json(),
+        "policy_violations": result.policy_violations,
     }
     if result.error is not None:
         document["error"] = result.error
@@ -201,7 +228,7 @@ def execute_claimed_run(db: Session, run: m.Run, *, policy: SandboxPolicy | None
 
     public = scenario_public_view(scenario)
     snapshot = _agent_snapshot(db, agent)
-    allowed = _allowed_tools(db, scenario, agent)
+    tools = _tool_gateway(db, scenario, agent)
     attempt_id = uuid.uuid4()
     budgets = exp.budgets if exp is not None and isinstance(exp.budgets, dict) else {}
 
@@ -228,15 +255,7 @@ def execute_claimed_run(db: Session, run: m.Run, *, policy: SandboxPolicy | None
         experiment_budgets=cast(dict[str, Any], budgets),
     )
     try:
-        result = execute_agent(
-            context,
-            snapshot,
-            public,
-            allowed,
-            DeniedModelGateway(),
-            DeniedToolGateway(),
-            sink,
-        )
+        result = execute_agent(context, snapshot, public, DeniedModelGateway(), tools, sink)
     except RunnerError as exc:
         mark_incomplete(sink)
         _ensure_failed_event(sink, exc.error_class, exc.message)

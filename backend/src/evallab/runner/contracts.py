@@ -51,19 +51,36 @@ class BudgetRemaining:
     steps_used: int = 0
 
 
+ToolOutcomeKind = Literal["completed", "denied", "invalid", "failed"]
+
+
 @dataclass(frozen=True)
 class Observation:
     call_id: uuid.UUID
     tool: str
+    status: ToolOutcomeKind
     result: Any
+    error_class: str | None = None
 
 
 @dataclass(frozen=True)
 class ToolCall:
     tool: str
     arguments: dict[str, Any]
-    result: Any
-    evidence_id: str | None = None
+
+
+@dataclass(frozen=True)
+class ToolOutcome:
+    """Resultado de ToolGateway.invoke; `validated` indica si pasó identidad, permiso y schema."""
+
+    kind: ToolOutcomeKind
+    validated: bool
+    reason_codes: tuple[str, ...] = ()
+    schema_errors: tuple[dict[str, str], ...] = ()
+    result: Any = None
+    error_class: str | None = None
+    error: str | None = None
+    state_digest: str | None = None
 
 
 @dataclass(frozen=True)
@@ -117,6 +134,7 @@ class RunResult:
     error_class: str | None = None
     error: str | None = None
     completeness: str = "complete"
+    policy_violations: int = 0
 
 
 class PatternAdapter(Protocol):
@@ -136,9 +154,11 @@ class ModelGateway(Protocol):
 
 
 class ToolGateway(Protocol):
-    def invoke(
-        self, tool: str, version: str, call_id: uuid.UUID, arguments: dict[str, Any]
-    ) -> Any: ...
+    def allowed_tools(self) -> Sequence[AllowedTool]: ...
+
+    def resolve(self, name: str) -> AllowedTool | None: ...
+
+    def invoke(self, name: str, call_id: uuid.UUID, arguments: dict[str, Any]) -> ToolOutcome: ...
 
 
 class StoredEvent(Protocol):
