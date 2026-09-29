@@ -1,8 +1,8 @@
 ## 1. M0 — Bootstrap
 
 - [x] 1.1 Crear estructura backend/frontend y fijar dependencias/entorno (reproducibility); verificar arranque limpio y lockfiles sin referencias flotantes.
-- [ ] 1.2 Configurar CI para validación OpenSpec, formato y tipos (reproducibility); verificar ejecución limpia sin credenciales live.
-  - Workflow configurado y sus comandos verificados en local (2026-09-29); falta la ejecución en GitHub Actions, que requiere un remoto.
+- [x] 1.2 Configurar CI para validación OpenSpec, formato y tipos (reproducibility); verificar ejecución limpia sin credenciales live.
+  - Evidencia: GitHub Actions run 36527093145 sobre 93be584 (2026-09-29), jobs openspec, backend, frontend y compose-smoke en verde, sin secretos.
 
 ## 2. M1 — Experiment model
 

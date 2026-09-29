@@ -15,7 +15,7 @@ COPY src ./src
 RUN uv sync --locked --no-dev --no-editable
 
 FROM python:3.14.7-slim-trixie@sha256:51dafde81dbdb6ebde285137a295cf18a47ca95234fe388a343719cb97305b3d AS runtime
-RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin evallab
+RUN useradd --uid 10001 --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin evallab
 COPY --from=build /opt/venv /opt/venv
 ENV PATH=/opt/venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \
