@@ -12,6 +12,14 @@ El sistema SHALL sellar configuraciones, benchmark, presupuestos, seeds y plan d
 - **WHEN** se intenta cambiar el prompt de un experimento sellado
 - **THEN** se rechaza la edición y se requiere una nueva configuración y experimento.
 
+#### Scenario: Published configuration mutation
+- **WHEN** se intenta modificar o borrar una versión publicada de AgentConfiguration, ModelConfiguration, ToolDefinition, Dataset, Scenario o Benchmark
+- **THEN** se rechaza y el cambio exige una versión nueva con su propio hash.
+
+#### Scenario: Seal with unresolved references
+- **WHEN** se sella un experimento sin benchmark o sin configuraciones de agente
+- **THEN** se rechaza el sellado y el experimento permanece en draft sin manifest.
+
 ### Requirement: Run identity and lifecycle
 
 El sistema SHALL crear una sola celda lógica por experimento, escenario/version, configuración, repetición y seed; SHALL conservar intentos y estados terminales según design.md; SHALL rechazar toda transición de estado de Experiment, Run o Evaluation no declarada en design.md.
@@ -31,6 +39,14 @@ El sistema SHALL crear una sola celda lógica por experimento, escenario/version
 #### Scenario: Conflicting submission
 - **WHEN** se reutiliza la clave con otro payload
 - **THEN** se rechaza con conflicto y no se encola otra ejecución.
+
+#### Scenario: Missing idempotency key
+- **WHEN** una solicitud de creación no incluye idempotency key
+- **THEN** se rechaza sin crear recurso.
+
+#### Scenario: Same cell with another key
+- **WHEN** se solicita con otra clave una celda que ya existe
+- **THEN** se rechaza con conflicto que identifica el run existente y no se duplica la celda.
 
 ### Requirement: Historical evaluation integrity
 
