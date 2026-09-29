@@ -1,0 +1,7 @@
+packages:
+  - frontend
+
+saveExact: true
+engineStrict: true
+# Permite `VAR=valor comando` en scripts de forma idéntica en Windows y Linux.
+shellEmulator: true

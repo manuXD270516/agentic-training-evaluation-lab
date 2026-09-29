@@ -1,7 +1,8 @@
 ## 1. M0 — Bootstrap
 
-- [ ] 1.1 Crear estructura backend/frontend y fijar dependencias/entorno (reproducibility); verificar arranque limpio y lockfiles sin referencias flotantes.
+- [x] 1.1 Crear estructura backend/frontend y fijar dependencias/entorno (reproducibility); verificar arranque limpio y lockfiles sin referencias flotantes.
 - [ ] 1.2 Configurar CI para validación OpenSpec, formato y tipos (reproducibility); verificar ejecución limpia sin credenciales live.
+  - Workflow configurado y sus comandos verificados en local (2026-09-29); falta la ejecución en GitHub Actions, que requiere un remoto.
 
 ## 2. M1 — Experiment model
 

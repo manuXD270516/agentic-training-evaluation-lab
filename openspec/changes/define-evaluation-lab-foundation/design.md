@@ -114,6 +114,30 @@ API directa es la opción por defecto: menos superficie y mismos contratos para 
 
 Tools candidatas: `get_dataset` (manifest público), `get_scenario` (vista pública), `submit_run` (payload validado, idempotente, procedencia externa), `get_trace` (redactada), `get_evaluation`, `compare_experiments`. Todos reutilizan servicios y autorización de la API. Runs externos son no confiables, no ejecutan código enviado y no participan en baseline oficial salvo reconstrucción/verificación por el harness. MCP no debe exponer oráculos privados ni convertir un tool en autoridad de aprobación.
 
+### 9. Toolchain and pinned versions (M0)
+
+Decisiones de entorno tomadas en M0 (2026-09-29). No cambian comportamiento de las capabilities; cambiar cualquiera exige actualizar esta sección y el lockfile correspondiente.
+
+| Elemento | Decisión | Justificación |
+|---|---|---|
+| Python | CPython 3.14.7 (`backend/.python-version`, `requires-python ==3.14.7`) | Última estable; misma versión exacta en local (gestionada por uv), CI e imagen `python:3.14.7-slim-trixie` |
+| Gestor Python | uv 0.12.20 (`required-version`), `uv.lock` con hashes, dependencias directas `==`, build backend `uv_build==0.12.20` | Un solo binario para intérprete, entorno y lock; `--locked` falla si el lock no corresponde |
+| Backend | FastAPI 0.141.1, Uvicorn 0.54.0, pydantic-settings 2.15.0, psycopg[binary] 3.3.6 | Mínimo para control plane, worker y comprobación de PostgreSQL; sin ORM hasta M1 |
+| Calidad Python | Ruff 0.16.9 (formato y lint), mypy 2.3.1 `strict`, pytest 9.1.1, httpx2 2.13.1 (TestClient de Starlette 1.x) | Formato/tipos exigidos por 1.2 con herramientas deterministas y sin red |
+| Node | 22.23.1 (`.nvmrc`, `engines`, `engineStrict`) | Instalada localmente y LTS en mantenimiento hasta 2027-04-30; revisar paso a Node 24 LTS antes de M10 |
+| Gestor frontend | pnpm 12.4.2 (`packageManager`), workspace raíz + `frontend/`, `saveExact`, `--frozen-lockfile` | Aislamiento estricto de dependencias y un único `pnpm-lock.yaml` que también fija la CLI de OpenSpec |
+| Frontend | React 19.3.0, Vite 8.3.1, @vitejs/plugin-react 6.1.1, TypeScript 7.0.2 (`tsc --noEmit` estricto), Prettier 3.9.9 | Versiones estables actuales; sin librería de estado/routing hasta que existan vistas (M10) |
+| OpenSpec | CLI 1.11.0 como devDependency raíz, telemetría desactivada (`OPENSPEC_TELEMETRY=0`) | Misma versión con la que se validó el change; actualizar (1.13.x disponible) es decisión aparte |
+| Migraciones | Alembic + SQLAlchemy 2 sobre psycopg 3, introducidas en M1 | Revisiones versionadas en Python, DDL transaccional en PostgreSQL, sin otro runtime; M0 no crea esquema |
+| PostgreSQL | `postgres:18.6-trixie` fijada por digest | Última mayor publicada (19 no existe aún); M9 debe usar una imagen PGVector de la misma mayor |
+| Contenedores | Imágenes base e imagen de uv fijadas por tag y digest; uid 10001, FS de sólo lectura, `cap_drop: ALL`, `no-new-privileges` | Reproducibilidad del entorno y superficie mínima |
+| CI | GitHub Actions con acciones fijadas por SHA, `permissions: contents: read`, sin secretos | Jobs `openspec`, `backend`, `frontend`, `compose-smoke`; mismos comandos que en local |
+| OpenTelemetry | Diferido a M4 | M0 no instrumenta; evita dependencias sin uso |
+
+Aislamiento preparado en M0, sin sandbox: el worker sólo se conecta a la red Compose `internal` (`internal: true`, sin salida a Internet), no publica puertos ni monta volúmenes del host o el socket de Docker. `SandboxPolicy` sólo admite `network=deny` y `host_tools=false`; otro valor aborta el arranque. Habilitar egress para el gateway de modelo (M6) requiere un delta de agent-execution y una ruta explícita a través del gateway, no red directa del agente.
+
+API y worker exponen `/health` (liveness, sin dependencias) y `/health/ready` (consulta a PostgreSQL; sólo devuelve la clase de error). Son endpoints operativos, fuera de la superficie de dominio. El de worker escucha en `127.0.0.1` dentro de su contenedor.
+
 ## Risks / Trade-offs
 
 - Dataset pequeño y sintético → publicar alcance y casos por categoría; no generalizar a producción.
