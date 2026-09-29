@@ -2,7 +2,7 @@
 
 Laboratorio para medir éxito, herramientas, argumentos, evidencia, recuperación, latencia y coste de sistemas agénticos mediante experimentos reproducibles.
 
-**Estado: M0 (bootstrap) implementado. Hay esqueletos de API, worker y frontend con endpoints de salud; no hay entidades de dominio, esquema de base de datos, dataset, benchmarks, métricas ni resultados.** M1 en adelante está pendiente.
+**Estado: M0 (bootstrap) y tarea 2.1 de M1 implementados. Hay esqueletos de API, worker y frontend con endpoints de salud, y el esquema relacional de las entidades del dominio con sus estados validados en PostgreSQL. Todavía no hay sellado ni API de experimentos (2.2), manifests de benchmark (2.3), dataset, benchmarks, métricas calculadas ni resultados.**
 
 Primer change: [define-evaluation-lab-foundation](openspec/changes/define-evaluation-lab-foundation/proposal.md).
 
@@ -22,10 +22,12 @@ backend/                 Python 3.14.7 + uv (paquete `evallab`)
   src/evallab/api/       Control plane FastAPI: /health, /health/ready
   src/evallab/worker/    Worker: heartbeat, /health, /health/ready; sin cola todavía (M2)
   src/evallab/settings.py  Configuración por entorno y SandboxPolicy (red denegada)
-  tests/                 Tests unitarios sin red ni base de datos
-  Dockerfile             Imagen de API y worker (bases fijadas por digest, no root)
+  src/evallab/domain/    Máquinas de estados y vocabularios cerrados del design
+  src/evallab/db/        Modelos SQLAlchemy, migraciones Alembic y `evallab-migrate`
+  tests/                 Unitarios; tests/integration/ usa PostgreSQL real
+  Dockerfile             Imagen de API, worker y migrate (bases fijadas por digest, no root)
 frontend/                React + Vite + TypeScript; página inicial sin vistas funcionales
-compose.yaml             PostgreSQL 18.6, API y worker
+compose.yaml             PostgreSQL 18.6, migrate (una vez), API y worker
 .env.example             Configuración de ejemplo sin credenciales
 .github/workflows/ci.yml CI: OpenSpec, backend, frontend y smoke de Compose
 ```
@@ -50,7 +52,9 @@ docker compose down --volumes
 Desarrollo local fuera de contenedores (con `docker compose up --detach --wait db`):
 
 ```powershell
-cd backend; uv sync --locked; uv run --locked --env-file ../.env evallab-api
+cd backend; uv sync --locked
+uv run --locked --env-file ../.env evallab-migrate
+uv run --locked --env-file ../.env evallab-api
 pnpm install --frozen-lockfile; pnpm --filter evallab-frontend run dev   # http://127.0.0.1:5173
 ```
 
@@ -67,8 +71,10 @@ uv sync --locked
 uv run --locked ruff format --check .
 uv run --locked ruff check .
 uv run --locked mypy
-uv run --locked pytest
+$env:EVALLAB_REQUIRE_DB = "1"; uv run --locked --env-file ../.env pytest
 ```
+
+Los tests de integración crean una base de datos vacía y temporal por sesión en el servidor de `POSTGRES_*` (requiere `docker compose up --detach --wait db`), aplican las migraciones y la eliminan al terminar. Sin `EVALLAB_REQUIRE_DB=1` se omiten si PostgreSQL no está disponible; CI los exige.
 
 ## Aislamiento del worker
 

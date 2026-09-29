@@ -4,15 +4,18 @@ version = "0.1.0"
 description = "Control plane y worker del laboratorio de evaluación agéntica (M0: esqueletos)."
 requires-python = "==3.14.7"
 dependencies = [
+    "alembic==1.20.0",
     "fastapi==0.141.1",
     "psycopg[binary]==3.3.6",
     "pydantic-settings==2.15.0",
+    "sqlalchemy==2.1.1",
     "uvicorn==0.54.0",
 ]
 
 [project.scripts]
 evallab-api = "evallab.api.__main__:main"
 evallab-worker = "evallab.worker.__main__:main"
+evallab-migrate = "evallab.db.migrate:main"
 
 [build-system]
 requires = ["uv_build==0.12.20"]
@@ -36,6 +39,10 @@ target-version = "py314"
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
 
+[tool.ruff.lint.per-file-ignores]
+# Migraciones generadas por Alembic: expresiones SQL largas en una sola cadena.
+"src/evallab/db/migrations/versions/*" = ["E501"]
+
 [tool.mypy]
 python_version = "3.14"
 strict = true
@@ -45,3 +52,4 @@ plugins = ["pydantic.mypy"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
+markers = ["integration: requiere PostgreSQL (POSTGRES_*); EVALLAB_REQUIRE_DB=1 impide omitirlos"]
