@@ -18,6 +18,7 @@ from typing import Any, Literal, cast
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from evallab.canonical import canonical_digest
 from evallab.db import models as m
 from evallab.domain.lifecycle import (
     EXPERIMENT_LIFECYCLE,
@@ -27,15 +28,24 @@ from evallab.domain.lifecycle import (
 )
 from evallab.domain.vocabulary import TRACE_SCHEMA_VERSION
 from evallab.runner.agent import execute_agent
-from evallab.runner.contracts import AgentSnapshot, AllowedTool, RunContext, RunResult, Usage
+from evallab.runner.contracts import (
+    AgentSnapshot,
+    AllowedTool,
+    RunContext,
+    RunResult,
+    ToolGateway,
+    Usage,
+)
 from evallab.runner.errors import InvalidFaultScheduleError, RunnerError
 from evallab.runner.gateways import DeniedModelGateway
 from evallab.runner.limits import Limits
 from evallab.runner.redaction import redact, redaction_metadata
+from evallab.runner.replay import ReplayMismatchError, ReplayToolGateway
 from evallab.runner.sink import MemoryTraceSink, mark_incomplete
 from evallab.runner.tools import FixtureToolGateway, ToolBinding, parse_fault_schedule
 from evallab.services.catalog import scenario_public_view
 from evallab.services.errors import NotFoundError
+from evallab.services.replays import ReplayUnavailableError, load_recording
 from evallab.services.traces import persist_events, seal_trace
 from evallab.settings import SandboxPolicy
 
@@ -67,6 +77,7 @@ class AttemptOutcome:
     claim: Claim
     result: RunResult
     sink: MemoryTraceSink | None
+    replay: dict[str, Any] | None = None
 
 
 def _agent_snapshot(db: Session, cfg: m.AgentConfiguration) -> AgentSnapshot:
@@ -390,11 +401,20 @@ def run_attempt(
         manifest_hash=exp.manifest_hash if exp is not None else None,
         experiment_budgets=cast(dict[str, Any], budgets),
     )
+    replay: dict[str, Any] | None = None
+    source_output: str | None = None
     try:
-        tools = _tool_gateway(db, scenario, agent)
+        tools: ToolGateway = _tool_gateway(db, scenario, agent)
+        if run.mode == "replay" and run.source_run_id is not None:
+            tools, replay, source_output = _replay_gateway(db, run.source_run_id, tools)
         result = execute_agent(
             context, snapshot, scenario_public_view(scenario), DeniedModelGateway(), tools, sink
         )
+        if replay is not None:
+            replay["output_matches_source"] = (
+                result.status == RunStatus.COMPLETED
+                and canonical_digest(redact(result.output)[0]) == source_output
+            )
     except RunnerError as exc:
         mark_incomplete(sink)
         _ensure_failed_event(sink, exc.error_class, exc.message)
@@ -407,7 +427,26 @@ def run_attempt(
         result = _failed_result(
             snapshot.pattern, snapshot.pattern_version, "infrastructure_error", type(exc).__name__
         )
-    return AttemptOutcome(claim=claim, result=result, sink=sink)
+    return AttemptOutcome(claim=claim, result=result, sink=sink, replay=replay)
+
+
+def _replay_gateway(
+    db: Session, source_run_id: uuid.UUID, live: ToolGateway
+) -> tuple[ReplayToolGateway, dict[str, Any], str]:
+    """Gateway que sirve la grabación de origen; el gateway live sólo aporta la allowlist."""
+    try:
+        recording, trace = load_recording(db, source_run_id)
+    except ReplayUnavailableError as exc:
+        raise ReplayMismatchError(exc.message) from exc
+    source = db.get(m.Run, source_run_id)
+    result = source.result if source is not None and isinstance(source.result, dict) else {}
+    info: dict[str, Any] = {
+        "source_run_id": str(source_run_id),
+        "source_trace_digest": trace.digest,
+        "recorded_calls": len(recording.calls),
+    }
+    gateway = ReplayToolGateway(live.allowed_tools(), recording)
+    return gateway, info, canonical_digest(result.get("output"))
 
 
 # --- Fase 3: persistir con fencing ---------------------------------------------------------
@@ -441,6 +480,8 @@ def finish_attempt(db: Session, outcome: AttemptOutcome, *, now: datetime | None
     run.error_class = result.error_class
     run.ended_at = ended_at
     run.result = _result_document(result, claim)
+    if outcome.replay is not None:
+        run.result = {**run.result, "replay": outcome.replay}
     attempt.status = "finished"
     attempt.ended_at = ended_at
     db.flush()

@@ -28,6 +28,7 @@ from evallab.runner.errors import (
     UnsupportedPatternError,
 )
 from evallab.runner.limits import Limits
+from evallab.runner.replay import ReplayMismatchError, ReplayToolGateway
 from evallab.runner.scripted import adapter_for
 from evallab.runner.sink import MemoryEvent, MemoryTraceSink
 from evallab.schemas import ScenarioPublicOut
@@ -209,7 +210,7 @@ class _Run:
             parent_event_id=step_event.event_id,
         )
         attempt = 1
-        outcome = tools.invoke(call.tool, call_id, call.arguments)
+        outcome = self._invoke(tools, call, call_id, requested, attempt)
         retries_left = self.limits.retries_per_call
         self._emit_outcome(call, call_id, requested, outcome, attempt, retries_left)
         while outcome.kind == "failed" and outcome.retriable and retries_left > 0:
@@ -230,7 +231,7 @@ class _Run:
                 },
                 parent_event_id=requested.event_id,
             )
-            outcome = tools.invoke(call.tool, call_id, call.arguments)
+            outcome = self._invoke(tools, call, call_id, requested, attempt)
             self._emit_outcome(call, call_id, requested, outcome, attempt, retries_left)
         return Observation(
             call_id=call_id,
@@ -239,6 +240,33 @@ class _Run:
             result=outcome.result,
             error_class=outcome.error_class,
         )
+
+    def _invoke(
+        self,
+        tools: ToolGateway,
+        call: ToolCall,
+        call_id: uuid.UUID,
+        requested: MemoryEvent,
+        attempt: int,
+    ) -> ToolOutcome:
+        try:
+            return tools.invoke(call.tool, call_id, call.arguments)
+        except ReplayMismatchError as exc:
+            # Toda llamada iniciada queda con resultado explícito, también la divergente.
+            self.sink.append(
+                "tool.failed",
+                "harness",
+                {
+                    "call_id": str(call_id),
+                    "attempt": attempt,
+                    "error": exc.message,
+                    "error_class": exc.error_class,
+                    "reason_codes": [exc.error_class],
+                    "retriable": False,
+                },
+                parent_event_id=requested.event_id,
+            )
+            raise
 
     def _emit_outcome(
         self,
@@ -364,7 +392,7 @@ def execute_agent(
     except RunnerError as exc:
         limits, limits_error = Limits(), exc
 
-    sink.append(
+    started_event = sink.append(
         "run.started",
         "harness",
         {
@@ -383,8 +411,12 @@ def execute_agent(
     run = _Run(sink, context, limits, agent.pattern, agent.pattern_version)
     if limits_error is not None:
         return run.fail(limits_error.error_class, limits_error.message)
-    if context.mode != "live":
-        return run.fail(ReplayNotImplementedError.error_class, "replay no implementado")
+    if context.mode == "replay":
+        if not isinstance(tools, ReplayToolGateway):
+            return run.fail(ReplayNotImplementedError.error_class, "replay sin grabación de origen")
+        mismatch = tools.recording.start_mismatch(started_event.payload)
+        if mismatch is not None:
+            return run.fail(ReplayMismatchError.error_class, mismatch)
     try:
         adapter = adapter_for(agent)
     except RunnerError as exc:
@@ -410,10 +442,20 @@ def execute_agent(
             return run.fail(exc.error_class, exc.message)
 
         if isinstance(action, FinalAnswer):
+            if isinstance(tools, ReplayToolGateway) and tools.pending():
+                run.end_step(step_id, started, "failed")
+                return run.fail(
+                    ReplayMismatchError.error_class,
+                    f"el replay terminó con {tools.pending()} llamadas grabadas sin emitir",
+                )
             run.end_step(step_id, started, "completed")
             return run.complete(action.output)
         if isinstance(action, ToolCall):
-            recorded = run.record_tool(action, tools, started)
+            try:
+                recorded = run.record_tool(action, tools, started)
+            except ReplayMismatchError as exc:
+                run.end_step(step_id, started, "failed")
+                return run.fail(exc.error_class, exc.message)
             if isinstance(recorded, _Stop):
                 run.end_step(step_id, started, "interrupted")
                 return run.stop(recorded)

@@ -102,6 +102,7 @@ class RunOut(BaseModel):
     repetition: int
     seed: int
     mode: str
+    source_run_id: uuid.UUID | None = None
     status: str
     error_class: str | None
     created_at: datetime

@@ -408,8 +408,12 @@ class Run(Base):
             "agent_version",
             "repetition",
             "seed",
+            "mode",
             name="uq_runs_experimental_cell",
         ),
+        UniqueConstraint("source_run_id", name="uq_runs_source_run_id"),
+        CheckConstraint("source_run_id IS NULL OR mode = 'replay'", name="source_only_on_replay"),
+        CheckConstraint("source_run_id <> id", name="source_not_self"),
         CheckConstraint(one_of("status", RUN_LIFECYCLE.states), name="status"),
         CheckConstraint(one_of("mode", vocab.RUN_MODES), name="mode"),
         CheckConstraint(
@@ -448,6 +452,7 @@ class Run(Base):
     error_class: Mapped[str | None] = mapped_column(Text)
     result: Mapped[Any | None] = mapped_column(JSONB)
     fencing_token: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    source_run_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("runs.id"))
     created_at: Mapped[datetime] = created_at()
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

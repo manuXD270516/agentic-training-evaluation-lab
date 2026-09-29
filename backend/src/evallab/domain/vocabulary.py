@@ -30,6 +30,7 @@ RUN_ERROR_CLASSES = (
     "model_error",
     "infrastructure_error",
     "trace_error",
+    "replay_mismatch",
 )
 
 TRACE_COMPLETENESS = ("complete", "incomplete", "invalid")

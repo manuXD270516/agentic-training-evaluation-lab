@@ -16,6 +16,7 @@ from evallab.schemas import (
 )
 from evallab.services import execution as execution_svc
 from evallab.services import experiments as svc
+from evallab.services import replays as replay_svc
 from evallab.services import traces as trace_svc
 from evallab.services.errors import ExperimentNotSealedError
 from evallab.services.idempotency import run_idempotent
@@ -117,6 +118,27 @@ def list_runs(request: Request, experiment_id: uuid.UUID) -> list[RunOut]:
 def get_run(request: Request, run_id: uuid.UUID) -> RunOut:
     with sessions(request).begin() as db:
         return svc.run_to_out(svc.get_run(db, run_id))
+
+
+@router.post(
+    "/runs/{run_id}/replays",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=RunOut,
+)
+def create_replay(
+    request: Request, run_id: uuid.UUID, idempotency_key: IdempotencyHeader = None
+) -> JSONResponse:
+    key = require_key(idempotency_key)
+    with sessions(request).begin() as db:
+
+        def handler() -> tuple[int, Any]:
+            run = replay_svc.create_replay(db, run_id)
+            return status.HTTP_202_ACCEPTED, dump(svc.run_to_out(run))
+
+        result = run_idempotent(
+            db, scope=f"POST /runs/{run_id}/replays", key=key, payload={}, handler=handler
+        )
+    return respond(result)
 
 
 @router.get("/runs/{run_id}/trace")

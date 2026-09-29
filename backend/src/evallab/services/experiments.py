@@ -78,6 +78,7 @@ def run_to_out(run: m.Run) -> RunOut:
         repetition=run.repetition,
         seed=run.seed,
         mode=run.mode,
+        source_run_id=run.source_run_id,
         status=run.status,
         error_class=run.error_class,
         created_at=run.created_at,
@@ -294,6 +295,10 @@ def seal(db: Session, experiment_id: uuid.UUID) -> m.Experiment:
 
 
 def create_run(db: Session, experiment_id: uuid.UUID, data: RunCreate) -> m.Run:
+    if data.mode == "replay":
+        raise InvalidRequestError(
+            "un replay se crea desde su run de origen con POST /runs/{id}/replays"
+        )
     exp = get_experiment(db, experiment_id)
     if exp.status not in ACCEPTS_RUNS:
         raise ExperimentNotAcceptingRunsError(
@@ -327,6 +332,7 @@ def create_run(db: Session, experiment_id: uuid.UUID, data: RunCreate) -> m.Run:
             m.Run.agent_version == data.agent.version,
             m.Run.repetition == data.repetition,
             m.Run.seed == seed,
+            m.Run.mode == data.mode,
         )
     )
     if existing is not None:
