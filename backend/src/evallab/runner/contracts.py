@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import time
 import uuid
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Literal, Protocol
 
@@ -43,12 +44,17 @@ class RunContext:
     sandbox: SandboxPolicy
     manifest_hash: str | None
     experiment_budgets: dict[str, Any]
+    clock: Callable[[], float] = field(default=time.monotonic, compare=False)
 
 
 @dataclass(frozen=True)
 class BudgetRemaining:
     max_steps: int | None = None
     steps_used: int = 0
+    max_tool_calls: int | None = None
+    tool_calls_used: int = 0
+    deadline_ms: int | None = None
+    elapsed_ms: int = 0
 
 
 ToolOutcomeKind = Literal["completed", "denied", "invalid", "failed"]
@@ -81,6 +87,11 @@ class ToolOutcome:
     error_class: str | None = None
     error: str | None = None
     state_digest: str | None = None
+    retriable: bool = False
+    ambiguous_effect: bool = False
+    fault_id: str | None = None
+    timeout_ms: int | None = None
+    idempotent_replay: bool = False
 
 
 @dataclass(frozen=True)
@@ -113,11 +124,15 @@ class Usage:
     tool_calls: int
     source: Literal["observed", "estimated", "unknown"] = "observed"
     scope: Literal["agent", "judge"] = "agent"
+    steps: int = 0
+    retries: int = 0
 
     def as_json(self) -> dict[str, JsonValue]:
         return {
             "model_calls": self.model_calls,
             "tool_calls": self.tool_calls,
+            "steps": self.steps,
+            "retries": self.retries,
             "source": self.source,
             "scope": self.scope,
         }
@@ -135,6 +150,7 @@ class RunResult:
     error: str | None = None
     completeness: str = "complete"
     policy_violations: int = 0
+    termination: dict[str, Any] | None = None
 
 
 class PatternAdapter(Protocol):

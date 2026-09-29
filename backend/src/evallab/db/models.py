@@ -17,6 +17,7 @@ from sqlalchemy import (
     Double,
     ForeignKey,
     ForeignKeyConstraint,
+    Index,
     Integer,
     MetaData,
     Numeric,
@@ -430,6 +431,8 @@ class Run(Base):
             "error_class IS NULL OR status NOT IN ('queued', 'running', 'completed')",
             name="error_only_when_unsuccessful",
         ),
+        CheckConstraint("fencing_token >= 0", name="fencing_token_non_negative"),
+        CheckConstraint("status <> 'running' OR fencing_token >= 1", name="running_has_token"),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -444,8 +447,42 @@ class Run(Base):
     status: Mapped[str] = mapped_column(Text, server_default=text("'queued'"))
     error_class: Mapped[str | None] = mapped_column(Text)
     result: Mapped[Any | None] = mapped_column(JSONB)
+    fencing_token: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
     created_at: Mapped[datetime] = created_at()
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class RunAttempt(Base):
+    """Intento operativo de un run: lease con vencimiento y fencing token monotónico.
+
+    Sólo el intento cuyo token coincide con `runs.fencing_token` puede persistir resultados.
+    """
+
+    __tablename__ = "run_attempts"
+    __table_args__ = (
+        UniqueConstraint("run_id", "attempt_number"),
+        UniqueConstraint("run_id", "fencing_token"),
+        CheckConstraint(one_of("status", vocab.RUN_ATTEMPT_STATUSES), name="status"),
+        CheckConstraint("attempt_number >= 1", name="attempt_number_positive"),
+        CheckConstraint("fencing_token >= 1", name="fencing_token_positive"),
+        CheckConstraint("(status = 'active') = (ended_at IS NULL)", name="ended_iff_inactive"),
+        Index(
+            "uq_run_attempts_active_run",
+            "run_id",
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    run_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("runs.id"))
+    attempt_number: Mapped[int] = mapped_column(Integer)
+    fencing_token: Mapped[int] = mapped_column(BigInteger)
+    worker_id: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'active'"))
+    lease_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = created_at()
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
@@ -494,7 +531,7 @@ class TraceEvent(Base):
         Uuid, primary_key=True, server_default=func.gen_random_uuid()
     )
     run_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("runs.id"))
-    attempt_id: Mapped[uuid.UUID] = mapped_column(Uuid)
+    attempt_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("run_attempts.id"))
     sequence: Mapped[int] = mapped_column(Integer)
     timestamp_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     elapsed_ms: Mapped[int] = mapped_column(Integer)

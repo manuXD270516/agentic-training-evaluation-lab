@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from evallab import __version__
 from evallab.db.engine import create_db_engine
 from evallab.health import DatabaseCheck, check_database
-from evallab.services.execution import claim_queued_run, execute_claimed_run
+from evallab.services.execution import claim_next_run, finish_attempt, run_attempt
 from evallab.settings import DatabaseSettings, SandboxPolicy, WorkerSettings
 
 logger = logging.getLogger("evallab.worker")
@@ -38,12 +38,29 @@ class Readiness(BaseModel):
     database: DatabaseCheck
 
 
-def poll_once(sessions: sessionmaker[Session]) -> None:
+def poll_once(
+    sessions: sessionmaker[Session],
+    cfg: WorkerSettings | None = None,
+    policy: SandboxPolicy | None = None,
+) -> bool:
+    """Reclama, ejecuta y persiste una celda; devuelve False si no había trabajo."""
+    settings = cfg or WorkerSettings()
     with sessions.begin() as db:
-        run = claim_queued_run(db)
-        if run is None:
-            return
-        execute_claimed_run(db, run)
+        claim = claim_next_run(
+            db,
+            worker_id=settings.worker_id,
+            lease_s=settings.lease_s,
+            max_attempts=settings.max_attempts,
+        )
+    if claim is None:
+        return False
+    with sessions() as db:
+        outcome = run_attempt(db, claim, policy=policy)
+    with sessions.begin() as db:
+        accepted = finish_attempt(db, outcome)
+    if not accepted:
+        logger.warning("intento %s rechazado por fencing", claim.attempt_id)
+    return True
 
 
 async def _heartbeat(state: WorkerState, interval_s: float) -> None:
@@ -52,13 +69,15 @@ async def _heartbeat(state: WorkerState, interval_s: float) -> None:
         await asyncio.sleep(interval_s)
 
 
-async def _poll(sessions: sessionmaker[Session], interval_s: float) -> None:
+async def _poll(
+    sessions: sessionmaker[Session], cfg: WorkerSettings, policy: SandboxPolicy
+) -> None:
     while True:
         try:
-            await asyncio.to_thread(poll_once, sessions)
+            await asyncio.to_thread(poll_once, sessions, cfg, policy)
         except Exception:
             logger.exception("worker poll failed")
-        await asyncio.sleep(interval_s)
+        await asyncio.sleep(cfg.poll_interval_s)
 
 
 def create_app(
@@ -79,7 +98,7 @@ def create_app(
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         logger.info("worker started; sandbox=%s queue=polling", sandbox.model_dump())
         heartbeat = asyncio.create_task(_heartbeat(state, cfg.heartbeat_interval_s))
-        poller = asyncio.create_task(_poll(sessions, cfg.poll_interval_s))
+        poller = asyncio.create_task(_poll(sessions, cfg, sandbox))
         try:
             yield
         finally:

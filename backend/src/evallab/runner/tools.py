@@ -29,6 +29,49 @@ class FixtureDefault(StrictModel):
     state_patch: JsonObject | None = None
 
 
+class FaultSpec(StrictModel):
+    """Fallo inyectado en la n-ésima ejecución de una tool dentro del run (retries incluidos)."""
+
+    fault_id: str = Field(min_length=1, max_length=128)
+    tool: str = Field(min_length=1)
+    call_index: int = Field(ge=1)
+    kind: Literal["timeout", "transient"]
+    effect_applied: bool = False
+
+    @model_validator(mode="after")
+    def _effect_only_on_timeout(self) -> FaultSpec:
+        if self.effect_applied and self.kind != "timeout":
+            raise ValueError("effect_applied sólo tiene sentido en un timeout")
+        return self
+
+
+class FaultSchedule(StrictModel):
+    faults: list[FaultSpec]
+
+    @model_validator(mode="after")
+    def _unique(self) -> FaultSchedule:
+        keys = Counter((f.tool, f.call_index) for f in self.faults)
+        if any(count > 1 for count in keys.values()):
+            raise ValueError("fault_schedule repite (tool, call_index)")
+        if len({f.fault_id for f in self.faults}) != len(self.faults):
+            raise ValueError("fault_schedule repite fault_id")
+        return self
+
+
+def parse_fault_schedule(raw: Any, known_tools: Iterable[str]) -> tuple[FaultSpec, ...]:
+    """Valida el fault_schedule privado; ValueError si es inválido o nombra tools ajenas."""
+    if raw is None:
+        return ()
+    try:
+        schedule = FaultSchedule.model_validate({"faults": raw})
+    except ValidationError as exc:
+        raise ValueError("fault_schedule inválido") from exc
+    unknown = sorted({f.tool for f in schedule.faults} - set(known_tools))
+    if unknown:
+        raise ValueError(f"fault_schedule nombra tools fuera del escenario: {unknown}")
+    return tuple(schedule.faults)
+
+
 class ToolFixture(StrictModel):
     kind: Literal["lookup"]
     cases: list[FixtureCase] = Field(default_factory=list)
@@ -49,6 +92,7 @@ class ToolBinding:
     output_schema: dict[str, Any]
     effect_class: str
     fixture: Any | None
+    timeout_ms: int | None = None
 
 
 def _pointer(path: Iterable[Any]) -> str:
@@ -70,6 +114,8 @@ class FixtureToolGateway:
     """Un gateway por run: tools autorizadas, fixtures copiadas y estado propio.
 
     No tiene acceso a sistema de archivos, procesos ni red: sólo resuelve fixtures en memoria.
+    El `call_id` es la clave de idempotencia: una tool con efectos ya aplicados para esa
+    clave devuelve el mismo resultado sin volver a aplicar el efecto.
     """
 
     def __init__(
@@ -79,6 +125,7 @@ class FixtureToolGateway:
         scenario_only: Iterable[str] = (),
         agent_only: Iterable[str] = (),
         initial_state: dict[str, Any] | None = None,
+        faults: Sequence[FaultSpec] = (),
     ) -> None:
         names = Counter(binding.tool.name for binding in allowed)
         self._ambiguous = {name for name, count in names.items() if count > 1}
@@ -90,6 +137,9 @@ class FixtureToolGateway:
         self._state: dict[str, Any] = copy.deepcopy(initial_state or {})
         self._validators: dict[str, Draft202012Validator] = {}
         self._fixtures: dict[str, ToolFixture] = {}
+        self._faults = {(f.tool, f.call_index): f for f in faults}
+        self._executions: Counter[str] = Counter()
+        self._applied: dict[uuid.UUID, Any] = {}
 
     def allowed_tools(self) -> Sequence[AllowedTool]:
         return tuple(binding.tool for binding in self._bindings.values())
@@ -139,7 +189,6 @@ class FixtureToolGateway:
         return parsed
 
     def invoke(self, name: str, call_id: uuid.UUID, arguments: dict[str, Any]) -> ToolOutcome:
-        del call_id
         binding = self._bindings.get(name)
         if binding is None:
             return ToolOutcome(kind="denied", validated=False, reason_codes=(self._denial(name),))
@@ -201,11 +250,53 @@ class FixtureToolGateway:
                 reason="output_schema_invalid",
             )
 
-        if case.state_patch is not None:
-            self._state.update(copy.deepcopy(case.state_patch))
+        if call_id in self._applied:
+            return ToolOutcome(
+                kind="completed",
+                validated=True,
+                result=copy.deepcopy(self._applied[call_id]),
+                state_digest=self.state_digest(),
+                idempotent_replay=True,
+            )
+
+        self._executions[name] += 1
+        fault = self._faults.get((name, self._executions[name]))
+        side_effect = binding.effect_class == "side_effect"
+        if fault is not None and fault.kind == "transient":
+            return ToolOutcome(
+                kind="failed",
+                validated=True,
+                reason_codes=("transient_fault",),
+                error_class="transient_tool_error",
+                error="fallo transitorio inyectado",
+                retriable=True,
+                fault_id=fault.fault_id,
+            )
+        if fault is not None and fault.kind == "timeout":
+            if side_effect and fault.effect_applied:
+                self._apply(call_id, case)
+            return ToolOutcome(
+                kind="failed",
+                validated=True,
+                reason_codes=("ambiguous_effect",) if side_effect else ("timeout",),
+                error_class="tool_timeout",
+                error="la tool superó su timeout",
+                retriable=not side_effect,
+                ambiguous_effect=side_effect,
+                fault_id=fault.fault_id,
+                timeout_ms=binding.timeout_ms,
+            )
+
+        if side_effect:
+            self._apply(call_id, case)
         return ToolOutcome(
             kind="completed",
             validated=True,
             result=copy.deepcopy(case.result),
             state_digest=self.state_digest(),
         )
+
+    def _apply(self, call_id: uuid.UUID, case: FixtureCase | FixtureDefault) -> None:
+        if case.state_patch is not None:
+            self._state.update(copy.deepcopy(case.state_patch))
+        self._applied[call_id] = copy.deepcopy(case.result)

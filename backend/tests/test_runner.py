@@ -1,13 +1,17 @@
+import time
 import uuid
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from typing import Any
+
+import pytest
 
 from evallab.domain.lifecycle import RunStatus
 from evallab.runner.agent import execute_agent
 from evallab.runner.contracts import AgentSnapshot, AllowedTool, RunContext
-from evallab.runner.errors import TraceIntegrityError
+from evallab.runner.errors import InvalidLimitsError, TraceIntegrityError
 from evallab.runner.gateways import DeniedModelGateway
+from evallab.runner.limits import Limits
 from evallab.runner.sink import MemoryTraceSink
 from evallab.runner.tools import FixtureToolGateway
 from evallab.schemas import ScenarioPublicOut
@@ -19,7 +23,11 @@ ADD_STEP = {"type": "tool", "tool": "calculator", "arguments": ADD}
 FINAL_STEP = {"type": "final", "output": {"total": 42}}
 
 
-def _context(mode: str = "live") -> RunContext:
+def _context(
+    mode: str = "live",
+    limits: dict[str, Any] | None = None,
+    clock: Callable[[], float] = time.monotonic,
+) -> RunContext:
     return RunContext(
         run_id=uuid.uuid4(),
         attempt_id=uuid.uuid4(),
@@ -27,11 +35,25 @@ def _context(mode: str = "live") -> RunContext:
         mode="replay" if mode == "replay" else "live",
         seed=11,
         started_at=datetime.now(UTC),
-        limits={"max_steps": 4},
+        limits=limits if limits is not None else {"max_steps": 4},
         sandbox=SandboxPolicy(),
         manifest_hash=DIGEST,
         experiment_budgets={"max_steps": 4},
+        clock=clock,
     )
+
+
+class SteppingClock:
+    """Reloj monotónico simulado que avanza `step_s` en cada lectura."""
+
+    def __init__(self, step_s: float) -> None:
+        self.now = 0.0
+        self.step_s = step_s
+
+    def __call__(self) -> float:
+        value = self.now
+        self.now += self.step_s
+        return value
 
 
 def _scenario() -> ScenarioPublicOut:
@@ -217,6 +239,49 @@ def test_replay_is_not_implemented() -> None:
     )
     assert result.status == RunStatus.FAILED
     assert "replay" in (result.error or "")
+
+
+def test_deadline_times_out_before_next_step() -> None:
+    context = _context(limits={"max_steps": 10, "deadline_ms": 1500}, clock=SteppingClock(1.0))
+    sink = _sink(context)
+    result = execute_agent(
+        context,
+        _agent(ADD_STEP, ADD_STEP, ADD_STEP, FINAL_STEP),
+        _scenario(),
+        DeniedModelGateway(),
+        _tools(),
+        sink,
+    )
+    assert result.status == RunStatus.TIMED_OUT
+    assert result.error_class is None
+    assert result.termination is not None
+    assert result.termination["limit"] == "deadline_ms"
+    assert result.termination["used"] >= 1500
+    assert _types(sink)[-1] == "run.timed_out"
+    assert "run.completed" not in _types(sink)
+
+
+def test_effective_limits_take_the_strictest_value() -> None:
+    limits = Limits.effective(
+        {"max_steps": 8, "max_retries": 2, "max_cost": "10.00"},
+        {"max_steps": 4, "max_retries": 3, "deadline_ms": 1000},
+    )
+    assert limits.as_json() == {"max_steps": 4, "max_retries": 2, "deadline_ms": 1000}
+    assert Limits().retries_per_call == 0
+
+
+@pytest.mark.parametrize("value", [0, -1, "4", True, 1.5])
+def test_invalid_limit_is_rejected(value: Any) -> None:
+    with pytest.raises(InvalidLimitsError):
+        Limits.effective({"max_steps": value})
+
+
+def test_invalid_limits_fail_the_run_typed() -> None:
+    context = _context(limits={"max_steps": 0})
+    sink = _sink(context)
+    result = execute_agent(context, _agent(), _scenario(), DeniedModelGateway(), _tools(), sink)
+    assert (result.status, result.error_class) == (RunStatus.FAILED, "infrastructure_error")
+    assert "tool.requested" not in _types(sink)
 
 
 def test_duplicate_event_id_same_digest_is_idempotent() -> None:

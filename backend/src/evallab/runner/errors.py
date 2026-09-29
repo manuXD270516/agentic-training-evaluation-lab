@@ -24,3 +24,11 @@ class ReplayNotImplementedError(RunnerError):
 
 class TraceIntegrityError(RunnerError):
     error_class = "trace_error"
+
+
+class InvalidLimitsError(RunnerError):
+    pass
+
+
+class InvalidFaultScheduleError(RunnerError):
+    pass

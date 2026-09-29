@@ -40,6 +40,14 @@ El runner SHALL aplicar límites de pasos, llamadas, tokens, tiempo y coste esti
 - **WHEN** una tool con efectos devuelve timeout sin confirmar ejecución
 - **THEN** no se reintenta automáticamente sin comprobar idempotencia o estado.
 
+#### Scenario: Transient failure retried within limit
+- **WHEN** una tool falla de forma transitoria y el escenario permite retries
+- **THEN** cada retry se registra con su intento y causa, cuenta en el consumo y se detiene en `max_retries`.
+
+#### Scenario: Expired worker without duplicate effects
+- **WHEN** el lease de un worker vence, otro worker reclama el run y el primero intenta persistir después
+- **THEN** sólo se persisten la traza y el resultado del intento con fencing token vigente y el intento obsoleto queda rechazado.
+
 ### Requirement: Incremental pattern delivery
 
 El sistema SHALL identificar baseline scripted como prueba del harness, introducir ReAct en M6 y Planner/Executor en M7 y no presentar patrones diferidos como implementados.

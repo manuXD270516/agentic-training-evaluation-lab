@@ -128,6 +128,7 @@ def test_status_triggers_encode_domain_lifecycles(migrated_database: Engine) -> 
         ("ck_scenarios_split", set(vocab.SPLITS)),
         ("ck_scenarios_difficulty", set(vocab.DIFFICULTIES)),
         ("ck_datasets_coverage_class", set(vocab.COVERAGE_CLASSES)),
+        ("ck_run_attempts_status", set(vocab.RUN_ATTEMPT_STATUSES)),
     ],
 )
 def test_check_constraints_match_domain_vocabulary(

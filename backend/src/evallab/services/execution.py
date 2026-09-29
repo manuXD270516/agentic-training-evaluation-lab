@@ -1,10 +1,18 @@
-"""Ejecución de celdas queued: runner scripted, traza en memoria y sellado."""
+"""Ejecución de celdas: reclamar con lease, ejecutar en memoria y persistir con fencing.
+
+1. `claim_next_run` (transacción corta): toma una celda `queued` o un run cuyo lease venció,
+   registra un `RunAttempt` con un fencing token nuevo y lo confirma antes de cualquier efecto.
+2. `run_attempt` (sin escrituras): ejecuta el runner sobre fixtures en memoria.
+3. `finish_attempt` (transacción corta): persiste traza y resultado sólo si el token del
+   intento sigue siendo el del run; un worker vencido no puede escribir.
+"""
 
 from __future__ import annotations
 
 import contextlib
 import uuid
-from datetime import UTC, datetime
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, cast
 
 from sqlalchemy import select
@@ -20,10 +28,11 @@ from evallab.domain.lifecycle import (
 from evallab.domain.vocabulary import TRACE_SCHEMA_VERSION
 from evallab.runner.agent import execute_agent
 from evallab.runner.contracts import AgentSnapshot, AllowedTool, RunContext, RunResult, Usage
-from evallab.runner.errors import RunnerError
+from evallab.runner.errors import InvalidFaultScheduleError, RunnerError
 from evallab.runner.gateways import DeniedModelGateway
+from evallab.runner.limits import Limits
 from evallab.runner.sink import MemoryTraceSink, mark_incomplete
-from evallab.runner.tools import FixtureToolGateway, ToolBinding
+from evallab.runner.tools import FixtureToolGateway, ToolBinding, parse_fault_schedule
 from evallab.services.catalog import scenario_public_view
 from evallab.services.errors import NotFoundError
 from evallab.settings import SandboxPolicy
@@ -37,6 +46,25 @@ TERMINAL_EVENT_TYPES = frozenset(
         "run.timed_out",
     }
 )
+INLINE_WORKER = "inline"
+DEFAULT_LEASE_S = 300.0
+
+
+@dataclass(frozen=True)
+class Claim:
+    run_id: uuid.UUID
+    attempt_id: uuid.UUID
+    attempt_number: int
+    fencing_token: int
+    worker_id: str
+    started_at: datetime
+
+
+@dataclass(frozen=True)
+class AttemptOutcome:
+    claim: Claim
+    result: RunResult
+    sink: MemoryTraceSink | None
 
 
 def _agent_snapshot(db: Session, cfg: m.AgentConfiguration) -> AgentSnapshot:
@@ -92,6 +120,7 @@ def _binding(db: Session, tool: m.ToolDefinition) -> ToolBinding:
         output_schema=tool.output_schema if isinstance(tool.output_schema, dict) else {},
         effect_class=tool.effect_class,
         fixture=fixture.payload if fixture is not None else None,
+        timeout_ms=tool.timeout_ms,
     )
 
 
@@ -104,27 +133,40 @@ def _tool_gateway(
     agent_keys = {(t.id, t.version) for t in in_agent}
     environment = scenario.environment if isinstance(scenario.environment, dict) else {}
     initial_state = environment.get("initial_state")
+    try:
+        faults = parse_fault_schedule(
+            environment.get("fault_schedule"), (t.name for t in in_scenario)
+        )
+    except ValueError as exc:
+        raise InvalidFaultScheduleError("fault_schedule del escenario inválido") from exc
     return FixtureToolGateway(
         [_binding(db, t) for t in in_scenario if (t.id, t.version) in agent_keys],
         scenario_only={t.name for t in in_scenario if (t.id, t.version) not in agent_keys},
         agent_only={t.name for t in in_agent if (t.id, t.version) not in scenario_keys},
         initial_state=initial_state if isinstance(initial_state, dict) else {},
+        faults=faults,
     )
 
 
-def _result_document(result: RunResult) -> dict[str, Any]:
-    label = "scripted" if result.pattern == "scripted" else result.pattern
-    attribution = "harness_baseline" if result.pattern == "scripted" else "unimplemented"
+def _labels(pattern: str) -> dict[str, str]:
+    if pattern == "scripted":
+        return {"label": "scripted", "attribution": "harness_baseline"}
+    return {"label": pattern, "attribution": "unimplemented"}
+
+
+def _result_document(result: RunResult, claim: Claim) -> dict[str, Any]:
     document: dict[str, Any] = {
         "pattern": result.pattern,
         "pattern_version": result.pattern_version,
-        "label": label,
-        "attribution": attribution,
+        **_labels(result.pattern),
         "output": result.output,
         "evidence_refs": [ref.as_json() for ref in result.evidence_refs],
         "usage": result.usage.as_json(),
         "policy_violations": result.policy_violations,
+        "attempt": {"number": claim.attempt_number, "fencing_token": claim.fencing_token},
     }
+    if result.termination is not None:
+        document["termination"] = result.termination
     if result.error is not None:
         document["error"] = result.error
     return document
@@ -157,12 +199,14 @@ def _flush_events(
 
 
 def _limits(exp: m.Experiment | None, scenario: m.Scenario) -> dict[str, Any]:
-    limits: dict[str, Any] = {}
-    if exp is not None and isinstance(exp.budgets, dict):
-        limits.update(exp.budgets)
-    if isinstance(scenario.limits, dict):
-        limits.update(scenario.limits)
-    return limits
+    """Límites efectivos: el más estricto entre presupuesto del experimento y escenario."""
+    budgets = exp.budgets if exp is not None and isinstance(exp.budgets, dict) else {}
+    limits = scenario.limits if isinstance(scenario.limits, dict) else {}
+    try:
+        return Limits.effective(budgets, limits).as_json()
+    except RunnerError:
+        merged: dict[str, Any] = {**budgets, **limits}
+        return merged
 
 
 def _mode(value: str) -> Literal["live", "replay"]:
@@ -180,7 +224,24 @@ def _ensure_failed_event(sink: MemoryTraceSink, error_class: str, error: str) ->
         )
 
 
-def claim_queued_run(db: Session) -> m.Run | None:
+def _failed_result(pattern: str, pattern_version: str, error_class: str, error: str) -> RunResult:
+    return RunResult(
+        status=RunStatus.FAILED,
+        pattern=pattern,
+        pattern_version=pattern_version,
+        output=None,
+        evidence_refs=(),
+        usage=Usage(model_calls=0, tool_calls=0),
+        error_class=error_class,
+        error=error,
+        completeness="incomplete",
+    )
+
+
+# --- Fase 1: reclamar ----------------------------------------------------------------------
+
+
+def _queued_run(db: Session) -> m.Run | None:
     return db.scalar(
         select(m.Run)
         .where(m.Run.status == RunStatus.QUEUED)
@@ -190,109 +251,228 @@ def claim_queued_run(db: Session) -> m.Run | None:
     )
 
 
-def execute_run(db: Session, run_id: uuid.UUID, *, policy: SandboxPolicy | None = None) -> m.Run:
-    run = db.get(m.Run, run_id, with_for_update=True)
-    if run is None:
-        raise NotFoundError("run inexistente", run_id=str(run_id))
-    return execute_claimed_run(db, run, policy=policy)
+def _expired_attempt(db: Session, now: datetime) -> tuple[m.Run, m.RunAttempt] | None:
+    row = db.execute(
+        select(m.Run, m.RunAttempt)
+        .join(m.RunAttempt, m.RunAttempt.run_id == m.Run.id)
+        .where(
+            m.Run.status == RunStatus.RUNNING,
+            m.RunAttempt.status == "active",
+            m.RunAttempt.lease_expires_at <= now,
+        )
+        .order_by(m.RunAttempt.lease_expires_at, m.Run.id)
+        .limit(1)
+        .with_for_update(skip_locked=True, of=m.Run)
+    ).first()
+    if row is None:
+        return None
+    return row[0], row[1]
 
 
-def execute_claimed_run(db: Session, run: m.Run, *, policy: SandboxPolicy | None = None) -> m.Run:
-    if run.status != RunStatus.QUEUED:
-        return run
-    sandbox = policy or SandboxPolicy()
-    started_at = datetime.now(UTC)
-    RUN_LIFECYCLE.check(RunStatus.QUEUED, RunStatus.RUNNING)
-    run.status = RunStatus.RUNNING
-    run.started_at = started_at
-
+def _start_run(db: Session, run: m.Run, now: datetime) -> None:
+    """Pasa a running; el llamador crea el intento (y el token) antes del siguiente flush."""
     exp = db.get(m.Experiment, run.experiment_id, with_for_update=True)
     if exp is not None and exp.status == ExperimentStatus.SEALED:
         EXPERIMENT_LIFECYCLE.check(ExperimentStatus.SEALED, ExperimentStatus.RUNNING)
         exp.status = ExperimentStatus.RUNNING
+    RUN_LIFECYCLE.check(RunStatus.QUEUED, RunStatus.RUNNING)
+    run.status = RunStatus.RUNNING
+    run.started_at = now
 
+
+def _new_attempt(
+    db: Session, run: m.Run, *, number: int, worker_id: str, lease_s: float, now: datetime
+) -> Claim:
+    token = run.fencing_token + 1
+    run.fencing_token = token
+    attempt = m.RunAttempt(
+        id=uuid.uuid4(),
+        run_id=run.id,
+        attempt_number=number,
+        fencing_token=token,
+        worker_id=worker_id,
+        status="active",
+        lease_expires_at=now + timedelta(seconds=lease_s),
+    )
+    db.add(attempt)
+    db.flush()
+    return Claim(
+        run_id=run.id,
+        attempt_id=attempt.id,
+        attempt_number=number,
+        fencing_token=token,
+        worker_id=worker_id,
+        started_at=now,
+    )
+
+
+def _fail_lost_run(db: Session, run: m.Run, attempts: int, now: datetime) -> None:
+    agent = db.get(m.AgentConfiguration, (run.agent_id, run.agent_version))
+    pattern = agent.pattern if agent is not None else "unknown"
+    RUN_LIFECYCLE.check(RunStatus.RUNNING, RunStatus.FAILED)
+    run.status = RunStatus.FAILED
+    run.error_class = "infrastructure_error"
+    run.ended_at = now
+    run.result = {
+        "pattern": pattern,
+        **_labels(pattern),
+        "output": None,
+        "evidence_refs": [],
+        "usage": Usage(model_calls=0, tool_calls=0).as_json(),
+        "policy_violations": 0,
+        "error": "worker perdido: lease vencido sin resultado",
+        "attempt": {"number": attempts, "fencing_token": run.fencing_token},
+    }
+
+
+def claim_next_run(
+    db: Session,
+    *,
+    worker_id: str,
+    lease_s: float = DEFAULT_LEASE_S,
+    max_attempts: int = 2,
+    now: datetime | None = None,
+) -> Claim | None:
+    """Reclama la siguiente celda. Los leases vencidos se reintentan hasta `max_attempts`;
+    agotados, el run termina `failed` con `infrastructure_error` explícito."""
+    now = now or datetime.now(UTC)
+    while (expired := _expired_attempt(db, now)) is not None:
+        run, attempt = expired
+        attempt.status = "expired"
+        attempt.ended_at = now
+        db.flush()
+        if attempt.attempt_number >= max_attempts:
+            _fail_lost_run(db, run, attempt.attempt_number, now)
+            db.flush()
+            continue
+        return _new_attempt(
+            db,
+            run,
+            number=attempt.attempt_number + 1,
+            worker_id=worker_id,
+            lease_s=lease_s,
+            now=now,
+        )
+    queued = _queued_run(db)
+    if queued is None:
+        return None
+    _start_run(db, queued, now)
+    return _new_attempt(db, queued, number=1, worker_id=worker_id, lease_s=lease_s, now=now)
+
+
+# --- Fase 2: ejecutar ----------------------------------------------------------------------
+
+
+def run_attempt(
+    db: Session, claim: Claim, *, policy: SandboxPolicy | None = None
+) -> AttemptOutcome:
+    """Ejecuta el intento sin escribir en la base; todo efecto queda en memoria del intento."""
+    run = db.get(m.Run, claim.run_id)
+    if run is None:
+        raise NotFoundError("run inexistente", run_id=str(claim.run_id))
     scenario = db.get(m.Scenario, (run.scenario_id, run.scenario_version))
     agent = db.get(m.AgentConfiguration, (run.agent_id, run.agent_version))
     if scenario is None or agent is None:
-        run.status = RunStatus.FAILED
-        run.error_class = "infrastructure_error"
-        run.ended_at = datetime.now(UTC)
-        run.result = {
-            "pattern": agent.pattern if agent is not None else "unknown",
-            "label": "scripted",
-            "attribution": "harness_baseline",
-            "error": "agente o escenario irresoluble",
-            "usage": Usage(model_calls=0, tool_calls=0).as_json(),
-        }
-        return run
+        pattern = agent.pattern if agent is not None else "unknown"
+        version = agent.pattern_version if agent is not None else "0.0.0"
+        result = _failed_result(
+            pattern, version, "infrastructure_error", "agente o escenario irresoluble"
+        )
+        return AttemptOutcome(claim=claim, result=result, sink=None)
 
-    public = scenario_public_view(scenario)
+    exp = db.get(m.Experiment, run.experiment_id)
     snapshot = _agent_snapshot(db, agent)
-    tools = _tool_gateway(db, scenario, agent)
-    attempt_id = uuid.uuid4()
     budgets = exp.budgets if exp is not None and isinstance(exp.budgets, dict) else {}
-
-    trace = m.Trace(run_id=run.id, schema_version=TRACE_SCHEMA_VERSION)
-    db.add(trace)
-    db.flush()
-
     sink = MemoryTraceSink(
-        started_at=started_at,
+        started_at=claim.started_at,
         schema_version=TRACE_SCHEMA_VERSION,
         run_id=run.id,
-        attempt_id=attempt_id,
+        attempt_id=claim.attempt_id,
     )
     context = RunContext(
         run_id=run.id,
-        attempt_id=attempt_id,
+        attempt_id=claim.attempt_id,
         experiment_id=run.experiment_id,
         mode=_mode(run.mode),
         seed=run.seed,
-        started_at=started_at,
+        started_at=claim.started_at,
         limits=_limits(exp, scenario),
-        sandbox=sandbox,
+        sandbox=policy or SandboxPolicy(),
         manifest_hash=exp.manifest_hash if exp is not None else None,
         experiment_budgets=cast(dict[str, Any], budgets),
     )
     try:
-        result = execute_agent(context, snapshot, public, DeniedModelGateway(), tools, sink)
+        tools = _tool_gateway(db, scenario, agent)
+        result = execute_agent(
+            context, snapshot, scenario_public_view(scenario), DeniedModelGateway(), tools, sink
+        )
     except RunnerError as exc:
         mark_incomplete(sink)
         _ensure_failed_event(sink, exc.error_class, exc.message)
-        result = RunResult(
-            status=RunStatus.FAILED,
-            pattern=snapshot.pattern,
-            pattern_version=snapshot.pattern_version,
-            output=None,
-            evidence_refs=(),
-            usage=Usage(model_calls=0, tool_calls=0),
-            error_class=exc.error_class,
-            error=exc.message,
-            completeness=sink.completeness,
+        result = _failed_result(
+            snapshot.pattern, snapshot.pattern_version, exc.error_class, exc.message
         )
     except Exception as exc:
         mark_incomplete(sink)
         _ensure_failed_event(sink, "infrastructure_error", type(exc).__name__)
-        result = RunResult(
-            status=RunStatus.FAILED,
-            pattern=snapshot.pattern,
-            pattern_version=snapshot.pattern_version,
-            output=None,
-            evidence_refs=(),
-            usage=Usage(model_calls=0, tool_calls=0),
-            error_class="infrastructure_error",
-            error=type(exc).__name__,
-            completeness=sink.completeness,
+        result = _failed_result(
+            snapshot.pattern, snapshot.pattern_version, "infrastructure_error", type(exc).__name__
         )
+    return AttemptOutcome(claim=claim, result=result, sink=sink)
 
-    ended_at = datetime.now(UTC)
-    _flush_events(db, run, trace, sink, ended_at)
+
+# --- Fase 3: persistir con fencing ---------------------------------------------------------
+
+
+def finish_attempt(db: Session, outcome: AttemptOutcome, *, now: datetime | None = None) -> bool:
+    """Persiste el intento si su fencing token sigue vigente; si no, lo marca `rejected`."""
+    now = now or datetime.now(UTC)
+    claim = outcome.claim
+    run = db.get(m.Run, claim.run_id, with_for_update=True)
+    attempt = db.get(m.RunAttempt, claim.attempt_id, with_for_update=True)
+    if run is None or attempt is None:
+        return False
+    if run.status != RunStatus.RUNNING or run.fencing_token != claim.fencing_token:
+        attempt.status = "rejected"
+        attempt.ended_at = attempt.ended_at or now
+        db.flush()
+        return False
+
+    ended_at = max(now, run.started_at or now)
+    if outcome.sink is not None:
+        trace = m.Trace(run_id=run.id, schema_version=TRACE_SCHEMA_VERSION)
+        db.add(trace)
+        db.flush()
+        _flush_events(db, run, trace, outcome.sink, ended_at)
+    result = outcome.result
     RUN_LIFECYCLE.check(RunStatus.RUNNING, result.status)
     run.status = result.status
     run.error_class = result.error_class
     run.ended_at = ended_at
-    run.result = _result_document(result)
+    run.result = _result_document(result, claim)
+    attempt.status = "finished"
+    attempt.ended_at = ended_at
     db.flush()
+    return True
+
+
+def execute_run(
+    db: Session,
+    run_id: uuid.UUID,
+    *,
+    policy: SandboxPolicy | None = None,
+    worker_id: str = INLINE_WORKER,
+) -> m.Run:
+    """Ejecuta una celda `queued` concreta en la sesión actual (útil para tests y CLI)."""
+    run = db.get(m.Run, run_id, with_for_update=True)
+    if run is None:
+        raise NotFoundError("run inexistente", run_id=str(run_id))
+    if run.status != RunStatus.QUEUED:
+        return run
+    now = datetime.now(UTC)
+    _start_run(db, run, now)
+    claim = _new_attempt(db, run, number=1, worker_id=worker_id, lease_s=DEFAULT_LEASE_S, now=now)
+    finish_attempt(db, run_attempt(db, claim, policy=policy))
     return run
 
 

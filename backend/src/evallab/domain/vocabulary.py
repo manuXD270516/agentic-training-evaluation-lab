@@ -34,6 +34,8 @@ RUN_ERROR_CLASSES = (
 
 TRACE_COMPLETENESS = ("complete", "incomplete", "invalid")
 
+RUN_ATTEMPT_STATUSES = ("active", "finished", "expired", "rejected")
+
 TRACE_SCHEMA_VERSION = "1.0"
 
 TRACE_ACTOR_ROLES = ("executor", "harness", "planner")

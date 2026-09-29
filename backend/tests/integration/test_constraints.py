@@ -68,9 +68,42 @@ def test_run_rejects_reevaluation_as_mode(session: Session) -> None:
         run.mode = "reevaluation"
 
 
+def test_running_run_requires_fencing_token(session: Session) -> None:
+    run = f.run(session)
+    with rejected(session, CHECK, "ck_runs_running_has_token"):
+        run.status, run.started_at = "running", f.now()
+
+
+def test_only_one_active_attempt_per_run(session: Session) -> None:
+    run = f.run(session)
+    run.status, run.started_at, run.fencing_token = "running", f.now(), 1
+    session.add(
+        m.RunAttempt(
+            run_id=run.id,
+            attempt_number=1,
+            fencing_token=1,
+            worker_id="a",
+            status="active",
+            lease_expires_at=f.now(),
+        )
+    )
+    session.flush()
+    with rejected(session, UNIQUE, "uq_run_attempts_active_run"):
+        session.add(
+            m.RunAttempt(
+                run_id=run.id,
+                attempt_number=2,
+                fencing_token=2,
+                worker_id="b",
+                status="active",
+                lease_expires_at=f.now(),
+            )
+        )
+
+
 def test_failed_run_requires_error_class(session: Session) -> None:
     run = f.run(session)
-    run.status, run.started_at = "running", f.now()
+    run.status, run.started_at, run.fencing_token = "running", f.now(), 1
     session.flush()
     with rejected(session, CHECK, "ck_runs_failed_has_error"):
         run.status, run.ended_at = "failed", f.now()

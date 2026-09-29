@@ -34,6 +34,7 @@ def _apply(row: Row, status: str) -> None:
             row.started_at = None
         elif status == "running":
             row.started_at = row.started_at or f.now()
+            row.fencing_token = max(row.fencing_token or 0, 1)
         row.ended_at = None if status in m.RUN_ACTIVE else f.now()
         row.error_class = "infrastructure_error" if status == "failed" else None
 

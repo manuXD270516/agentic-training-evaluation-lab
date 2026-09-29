@@ -2,7 +2,7 @@
 
 Laboratorio para medir éxito, herramientas, argumentos, evidencia, recuperación, latencia y coste de sistemas agénticos mediante experimentos reproducibles.
 
-**Estado: M0–M1 y tareas 3.1–3.2 de M2: contratos del runner, baseline scripted offline, gateway de tools sobre fixtures declarativas con validación JSON Schema, allowlist y estado aislado por run, eventos sellados en `Trace`/`TraceEvent` y worker que toma celdas `queued`. Todavía no hay límites, timeouts, retries ni leases/fencing (3.3), dataset piloto de 14 casos (M5), métricas calculadas ni resultados.**
+**Estado: M0–M2: contratos del runner, baseline scripted offline, gateway de tools sobre fixtures declarativas con validación JSON Schema, allowlist y estado aislado por run, límites de pasos/llamadas/deadline, retries trazados sobre fallos inyectados, eventos sellados en `Trace`/`TraceEvent` y worker con leases y fencing token. Todavía no hay evaluadores (M3), dataset piloto de 14 casos (M5), métricas calculadas ni resultados.**
 
 API disponible (localhost:8000; esquema OpenAPI en `/docs`):
 
@@ -38,8 +38,8 @@ Las specs del change describen comportamiento futuro. `openspec/specs` permanece
 ```text
 backend/                 Python 3.14.7 + uv (paquete `evallab`)
   src/evallab/api/       Control plane FastAPI: /health, /health/ready
-  src/evallab/worker/    Worker: heartbeat, polling SKIP LOCKED, /health; leases/fencing en 3.3
-  src/evallab/runner/    Contratos, sink en memoria, patrón scripted y gateway de tools
+  src/evallab/worker/    Worker: heartbeat, claim con lease + fencing token, /health
+  src/evallab/runner/    Contratos, límites, sink en memoria, patrón scripted y gateway de tools
   src/evallab/settings.py  Configuración por entorno y SandboxPolicy (red denegada)
   src/evallab/domain/    Máquinas de estados y vocabularios cerrados del design
   src/evallab/db/        Modelos SQLAlchemy, migraciones Alembic y `evallab-migrate`
@@ -97,4 +97,6 @@ Los tests de integración crean una base de datos vacía y temporal por sesión 
 
 ## Aislamiento del worker
 
-El worker sólo está en la red Compose `internal` (sin salida a Internet), no publica puertos y no monta el host ni el socket de Docker. `WORKER_AGENT_NETWORK` sólo admite `deny` y `WORKER_AGENT_HOST_TOOLS` sólo `false`. Esto prepara el aislamiento; el sandbox de ejecución de agentes se implementa en M2.
+El worker sólo está en la red Compose `internal` (sin salida a Internet), no publica puertos y no monta el host ni el socket de Docker. `WORKER_AGENT_NETWORK` sólo admite `deny` y `WORKER_AGENT_HOST_TOOLS` sólo `false`. Las tools se ejecutan sólo sobre fixtures en memoria, sin sistema de archivos, procesos ni red.
+
+Cada ejecución registra un intento en `run_attempts` con lease (`WORKER_LEASE_S`, 300 s por defecto) y fencing token. Un lease vencido se reclama con token nuevo hasta `WORKER_MAX_ATTEMPTS` (2); agotados, el run termina `failed` con `infrastructure_error`. Un worker con token obsoleto no puede persistir su traza. `WORKER_WORKER_ID` identifica al worker (por defecto `host-pid`).

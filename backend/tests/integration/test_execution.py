@@ -2,12 +2,13 @@ import json
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, select
-from sqlalchemy.orm import Session
+from sqlalchemy import Engine, func, select
+from sqlalchemy.orm import Session, sessionmaker
 
 from evallab.api.app import create_app
 from evallab.canonical import canonical_digest
@@ -16,15 +17,28 @@ from evallab.db.migrate import upgrade_head
 from evallab.domain.lifecycle import ExperimentStatus, RunStatus
 from evallab.schemas import FixtureCreate
 from evallab.services.catalog import publish_fixture
-from evallab.services.execution import claim_queued_run, execute_claimed_run, execute_run
+from evallab.services.execution import (
+    AttemptOutcome,
+    Claim,
+    claim_next_run,
+    execute_run,
+    finish_attempt,
+    run_attempt,
+)
 from evallab.services.experiments import seal
+from evallab.worker.app import poll_once
 from tests.integration import factories as f
 from tests.test_tools import ADD, CALCULATOR_INPUT, TOTAL_OUTPUT
 
 pytestmark = pytest.mark.integration
 
 ORACLE_SECRET = "SECRET_ORACLE_42"
+HIDDEN_FAULT = "fault-secret-99"
 INITIAL_STATE = {"entries": 0}
+LEDGER_SCRIPT = [
+    {"type": "tool", "tool": "{ledger}", "arguments": {"entry": "x"}},
+    {"type": "final", "output": {"ok": True}},
+]
 
 
 @dataclass(frozen=True)
@@ -72,6 +86,8 @@ def _world(
     pattern: str = "scripted",
     script: list[dict[str, Any]] | None = None,
     runs: int = 1,
+    limits: dict[str, Any] | None = None,
+    faults: list[dict[str, Any]] | None = None,
 ) -> World:
     bench = f.benchmark(db)
     calculator = _tool(
@@ -111,6 +127,14 @@ def _world(
         output_schema={"type": "object"},
         fixture=None,
     )
+    names = {"calculator": calculator.name, "ledger": ledger.name, "shell": shell.name}
+    hidden_fault = {
+        "fault_id": HIDDEN_FAULT,
+        "tool": calculator.name,
+        "call_index": 99,
+        "kind": "transient",
+    }
+    schedule = [{**fault, "tool": fault["tool"].format(**names)} for fault in faults or []]
     scenario = m.Scenario(
         id=uuid.uuid4(),
         version="1.0.0",
@@ -123,9 +147,9 @@ def _world(
             {"id": str(t.id), "version": t.version, "content_hash": t.content_hash}
             for t in (calculator, ledger)
         ],
-        environment={"initial_state": INITIAL_STATE, "fault_schedule": [{"fault": "hidden"}]},
+        environment={"initial_state": INITIAL_STATE, "fault_schedule": [*schedule, hidden_fault]},
         oracle_ref={"checks": [{"value": ORACLE_SECRET}]},
-        limits={"max_steps": 4},
+        limits=limits or {"max_steps": 6},
         content_hash=f.digest(),
     )
     db.add(scenario)
@@ -143,7 +167,6 @@ def _world(
         {"type": "tool", "tool": "{calculator}", "arguments": ADD},
         {"type": "final", "output": {"total": 42}},
     ]
-    names = {"calculator": calculator.name, "ledger": ledger.name, "shell": shell.name}
     resolved = [
         {**s, "tool": s["tool"].format(**names)} if s["type"] == "tool" else s for s in steps
     ]
@@ -160,7 +183,7 @@ def _world(
         hypothesis="scripted harness",
         benchmark_id=bench.id,
         benchmark_version=bench.version,
-        budgets={"max_steps": 4},
+        budgets={"max_steps": 8},
         repetitions=runs,
         seeds=seeds,
     )
@@ -248,6 +271,7 @@ def test_scripted_run_reaches_terminal_state_with_evidence(
     assert ORACLE_SECRET not in blob
     assert "family-secret" not in blob
     assert "fault_schedule" not in blob
+    assert HIDDEN_FAULT not in blob
 
 
 def test_forbidden_tool_and_invalid_arguments_are_traced_not_executed(
@@ -347,12 +371,234 @@ def test_react_is_not_reported_as_implemented(
     assert body["result"]["usage"]["model_calls"] == 0
 
 
-def test_worker_claims_queued_run(empty_database: Engine) -> None:
+def _run_and_events(
+    engine: Engine, client: TestClient, **world: Any
+) -> tuple[m.Run, list[dict[str, Any]]]:
+    with Session(engine, expire_on_commit=False) as db, db.begin():
+        built = _world(db, **world)
+        run = execute_run(db, built.run_ids[0])
+    return run, _events(client, built.run_ids[0])
+
+
+def test_step_budget_stops_before_next_call(migrated_database: Engine, client: TestClient) -> None:
+    script = [
+        {"type": "tool", "tool": "{calculator}", "arguments": ADD},
+        {"type": "tool", "tool": "{calculator}", "arguments": ADD},
+        {"type": "final", "output": {"total": 42}},
+    ]
+    run, events = _run_and_events(migrated_database, client, script=script, limits={"max_steps": 2})
+    assert run.status == RunStatus.BUDGET_EXCEEDED
+    assert run.error_class is None
+    assert run.result is not None
+    assert run.result["termination"] == {"limit": "max_steps", "limit_value": 2, "used": 2}
+    assert run.result["usage"]["steps"] == 2
+    types = [e["type"] for e in events]
+    assert types[-1] == "run.budget_exceeded"
+    assert types.count("step.started") == 2
+    assert types.count("tool.requested") == 2
+    assert "run.completed" not in types
+
+
+def test_tool_call_budget_stops_before_request(
+    migrated_database: Engine, client: TestClient
+) -> None:
+    script = [
+        {"type": "tool", "tool": "{calculator}", "arguments": ADD},
+        {"type": "tool", "tool": "{calculator}", "arguments": ADD},
+        {"type": "final", "output": {"total": 42}},
+    ]
+    run, events = _run_and_events(
+        migrated_database, client, script=script, limits={"max_steps": 6, "max_tool_calls": 1}
+    )
+    assert run.status == RunStatus.BUDGET_EXCEEDED
+    assert run.result is not None
+    assert run.result["termination"]["limit"] == "max_tool_calls"
+    assert run.result["usage"]["tool_calls"] == 1
+    started = next(e for e in events if e["type"] == "run.started")
+    assert started["payload"]["limits"] == {"max_steps": 6, "max_tool_calls": 1}
+    assert [e["type"] for e in events].count("tool.requested") == 1
+    interrupted = [e["payload"]["status"] for e in events if e["type"] == "step.completed"]
+    assert interrupted == ["completed", "interrupted"]
+
+
+def test_transient_fault_is_retried_and_traced(
+    migrated_database: Engine, client: TestClient
+) -> None:
+    faults = [{"fault_id": "t1", "tool": "{calculator}", "call_index": 1, "kind": "transient"}]
+    run, events = _run_and_events(
+        migrated_database, client, faults=faults, limits={"max_steps": 4, "max_retries": 1}
+    )
+    assert run.status == RunStatus.COMPLETED
+    assert run.result is not None
+    assert run.result["usage"]["tool_calls"] == 2
+    assert run.result["usage"]["retries"] == 1
+    types = [e["type"] for e in events]
+    assert types.count("tool.validated") == 1
+    failed = next(e["payload"] for e in events if e["type"] == "tool.failed")
+    assert failed["error_class"] == "transient_tool_error"
+    assert failed["retriable"] is True and failed["attempt"] == 1
+    retry = next(e["payload"] for e in events if e["type"] == "retry.scheduled")
+    assert retry["origin_call_id"] == failed["call_id"]
+    assert retry["attempt_number"] == 2
+    completed = next(e["payload"] for e in events if e["type"] == "tool.completed")
+    assert completed["attempt"] == 2 and completed["call_id"] == failed["call_id"]
+
+
+def test_retries_stop_at_scenario_maximum(migrated_database: Engine, client: TestClient) -> None:
+    faults = [
+        {"fault_id": "t1", "tool": "{calculator}", "call_index": 1, "kind": "transient"},
+        {"fault_id": "t2", "tool": "{calculator}", "call_index": 2, "kind": "timeout"},
+    ]
+    run, events = _run_and_events(
+        migrated_database, client, faults=faults, limits={"max_steps": 4, "max_retries": 1}
+    )
+    assert run.status == RunStatus.COMPLETED
+    assert run.result is not None
+    assert run.result["usage"]["retries"] == 1
+    failed = [e["payload"] for e in events if e["type"] == "tool.failed"]
+    assert [f["error_class"] for f in failed] == ["transient_tool_error", "tool_timeout"]
+    assert failed[1]["retries_exhausted"] is True
+    assert failed[1]["timeout_ms"] == 1000
+    assert "tool.completed" not in [e["type"] for e in events]
+
+
+def test_ambiguous_side_effect_is_not_retried(
+    migrated_database: Engine, client: TestClient
+) -> None:
+    faults = [
+        {
+            "fault_id": "amb",
+            "tool": "{ledger}",
+            "call_index": 1,
+            "kind": "timeout",
+            "effect_applied": True,
+        }
+    ]
+    run, events = _run_and_events(
+        migrated_database,
+        client,
+        script=LEDGER_SCRIPT,
+        faults=faults,
+        limits={"max_steps": 4, "max_retries": 3},
+    )
+    assert run.status == RunStatus.COMPLETED
+    assert run.result is not None
+    assert run.result["usage"]["retries"] == 0
+    assert run.result["usage"]["tool_calls"] == 1
+    types = [e["type"] for e in events]
+    assert "retry.scheduled" not in types
+    failed = next(e["payload"] for e in events if e["type"] == "tool.failed")
+    assert failed["ambiguous_effect"] is True
+    assert failed["reconciliation"] == "required"
+    assert failed["retriable"] is False
+
+
+def test_invalid_fault_schedule_fails_as_infrastructure(
+    migrated_database: Engine, client: TestClient
+) -> None:
+    faults = [{"fault_id": "x", "tool": "ghost", "call_index": 1, "kind": "transient"}]
+    run, events = _run_and_events(migrated_database, client, faults=faults)
+    assert run.status == RunStatus.FAILED
+    assert run.error_class == "infrastructure_error"
+    assert events[-1]["type"] == "run.failed"
+    assert "ghost" not in json.dumps(events)
+
+
+@pytest.fixture
+def fresh_database(empty_database: Engine) -> Engine:
     with empty_database.begin() as conn:
         upgrade_head(conn)
-    with Session(empty_database) as db, db.begin():
+    return empty_database
+
+
+def _claim(engine: Engine, worker: str, now: datetime, **kwargs: Any) -> Claim | None:
+    with Session(engine, expire_on_commit=False) as db, db.begin():
+        return claim_next_run(db, worker_id=worker, lease_s=10, now=now, **kwargs)
+
+
+def _execute(engine: Engine, claim: Claim) -> AttemptOutcome:
+    with Session(engine, expire_on_commit=False) as db:
+        return run_attempt(db, claim)
+
+
+def _finish(engine: Engine, outcome: AttemptOutcome) -> bool:
+    with Session(engine, expire_on_commit=False) as db, db.begin():
+        return finish_attempt(db, outcome)
+
+
+def test_expired_worker_cannot_persist_duplicate_effects(fresh_database: Engine) -> None:
+    with Session(fresh_database, expire_on_commit=False) as db, db.begin():
+        world = _world(db, script=LEDGER_SCRIPT)
+    t0 = datetime.now(UTC)
+
+    claim_a = _claim(fresh_database, "worker-a", t0)
+    assert claim_a is not None and claim_a.fencing_token == 1
+    outcome_a = _execute(fresh_database, claim_a)
+    assert _claim(fresh_database, "worker-b", t0 + timedelta(seconds=5)) is None
+
+    claim_b = _claim(fresh_database, "worker-b", t0 + timedelta(seconds=11))
+    assert claim_b is not None
+    assert claim_b.run_id == claim_a.run_id == world.run_ids[0]
+    assert (claim_b.attempt_number, claim_b.fencing_token) == (2, 2)
+    outcome_b = _execute(fresh_database, claim_b)
+
+    assert _finish(fresh_database, outcome_a) is False
+    assert _finish(fresh_database, outcome_b) is True
+    assert _finish(fresh_database, outcome_a) is False
+
+    with Session(fresh_database) as db:
+        run = db.get(m.Run, world.run_ids[0])
+        assert run is not None and run.status == RunStatus.COMPLETED
+        assert run.result is not None
+        assert run.result["attempt"] == {"number": 2, "fencing_token": 2}
+        attempts = {
+            a.worker_id: a.status
+            for a in db.scalars(select(m.RunAttempt).where(m.RunAttempt.run_id == run.id))
+        }
+        assert attempts == {"worker-a": "rejected", "worker-b": "finished"}
+        events = list(db.scalars(select(m.TraceEvent).where(m.TraceEvent.run_id == run.id)))
+        assert {e.attempt_id for e in events} == {claim_b.attempt_id}
+        assert sum(1 for e in events if e.type == "tool.completed") == 1
+        assert db.scalar(select(func.count()).select_from(m.Trace)) == 1
+
+
+def test_expired_lease_without_reclaim_still_finishes(fresh_database: Engine) -> None:
+    with Session(fresh_database, expire_on_commit=False) as db, db.begin():
         world = _world(db)
-        claimed = claim_queued_run(db)
-        assert claimed is not None
-        assert claimed.id == world.run_ids[0]
-        assert execute_claimed_run(db, claimed).status == RunStatus.COMPLETED
+    claim = _claim(fresh_database, "slow", datetime.now(UTC) - timedelta(minutes=5))
+    assert claim is not None
+    assert _finish(fresh_database, _execute(fresh_database, claim)) is True
+    with Session(fresh_database) as db:
+        run = db.get(m.Run, world.run_ids[0])
+        assert run is not None and run.status == RunStatus.COMPLETED
+
+
+def test_lost_worker_fails_explicitly_after_max_attempts(fresh_database: Engine) -> None:
+    with Session(fresh_database, expire_on_commit=False) as db, db.begin():
+        world = _world(db)
+    t0 = datetime.now(UTC)
+    claim = _claim(fresh_database, "lost", t0, max_attempts=1)
+    assert claim is not None
+    assert _claim(fresh_database, "other", t0 + timedelta(seconds=11), max_attempts=1) is None
+    assert _finish(fresh_database, _execute(fresh_database, claim)) is False
+    with Session(fresh_database) as db:
+        run = db.get(m.Run, world.run_ids[0])
+        assert run is not None
+        assert run.status == RunStatus.FAILED
+        assert run.error_class == "infrastructure_error"
+        assert run.result is not None
+        assert "lease" in run.result["error"]
+        assert db.scalar(select(m.Trace).where(m.Trace.run_id == run.id)) is None
+
+
+def test_worker_poll_claims_executes_and_persists(fresh_database: Engine) -> None:
+    with Session(fresh_database, expire_on_commit=False) as db, db.begin():
+        world = _world(db)
+    sessions = sessionmaker(fresh_database, expire_on_commit=False)
+    assert poll_once(sessions) is True
+    assert poll_once(sessions) is False
+    with Session(fresh_database) as db:
+        run = db.get(m.Run, world.run_ids[0])
+        assert run is not None and run.status == RunStatus.COMPLETED
+        attempt = db.scalar(select(m.RunAttempt).where(m.RunAttempt.run_id == run.id))
+        assert attempt is not None and attempt.status == "finished"

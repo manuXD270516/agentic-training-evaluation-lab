@@ -1,3 +1,5 @@
+import os
+import socket
 from typing import Literal
 
 from psycopg.conninfo import make_conninfo
@@ -63,3 +65,8 @@ class WorkerSettings(BaseSettings):
     health_port: int = Field(default=8001, ge=1, le=65535)
     heartbeat_interval_s: float = Field(default=10.0, gt=0, le=3600)
     poll_interval_s: float = Field(default=0.5, gt=0, le=3600)
+    worker_id: str = Field(
+        default_factory=lambda: f"{socket.gethostname()}-{os.getpid()}", min_length=1
+    )
+    lease_s: float = Field(default=300.0, gt=0, le=86400)
+    max_attempts: int = Field(default=2, ge=1, le=10)

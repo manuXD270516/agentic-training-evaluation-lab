@@ -8,7 +8,7 @@ import pytest
 
 from evallab.canonical import canonical_digest
 from evallab.runner.contracts import AllowedTool
-from evallab.runner.tools import FixtureToolGateway, ToolBinding
+from evallab.runner.tools import FaultSpec, FixtureToolGateway, ToolBinding, parse_fault_schedule
 
 DIGEST = "b" * 64
 
@@ -249,3 +249,94 @@ def test_remote_refs_are_not_fetched() -> None:
     tool = binding(input_schema={"$ref": "https://example.invalid/schema.json"})
     outcome = invoke(FixtureToolGateway([tool]), "calculator", ADD)
     assert (outcome.kind, outcome.reason_codes) == ("failed", ("input_schema_unresolvable",))
+
+
+def test_same_call_id_does_not_reapply_side_effect() -> None:
+    gateway = FixtureToolGateway([ledger()], initial_state={"count": 0})
+    call_id = uuid.uuid4()
+    first = gateway.invoke("ledger-append", call_id, {"entry": "x"})
+    state_after_first = gateway.state
+    again = gateway.invoke("ledger-append", call_id, {"entry": "x"})
+    assert first.kind == again.kind == "completed"
+    assert again.idempotent_replay is True
+    assert again.result == first.result
+    assert gateway.state == state_after_first
+
+
+def test_transient_fault_applies_no_effect_and_is_retriable() -> None:
+    fault = FaultSpec(fault_id="t", tool="ledger-append", call_index=1, kind="transient")
+    gateway = FixtureToolGateway([ledger()], initial_state={}, faults=[fault])
+    call_id = uuid.uuid4()
+    failed = gateway.invoke("ledger-append", call_id, {"entry": "x"})
+    assert (failed.kind, failed.error_class, failed.retriable) == (
+        "failed",
+        "transient_tool_error",
+        True,
+    )
+    assert gateway.state == {}
+    retried = gateway.invoke("ledger-append", call_id, {"entry": "x"})
+    assert retried.kind == "completed"
+    assert gateway.state == {"last_entry": "x"}
+
+
+@pytest.mark.parametrize("applied", [True, False])
+def test_side_effect_timeout_is_ambiguous_and_not_retriable(applied: bool) -> None:
+    fault = FaultSpec(
+        fault_id="amb", tool="ledger-append", call_index=1, kind="timeout", effect_applied=applied
+    )
+    gateway = FixtureToolGateway([ledger()], initial_state={}, faults=[fault])
+    call_id = uuid.uuid4()
+    outcome = gateway.invoke("ledger-append", call_id, {"entry": "x"})
+    assert (outcome.error_class, outcome.retriable, outcome.ambiguous_effect) == (
+        "tool_timeout",
+        False,
+        True,
+    )
+    assert gateway.state == ({"last_entry": "x"} if applied else {})
+    if applied:
+        reconciled = gateway.invoke("ledger-append", call_id, {"entry": "x"})
+        assert reconciled.idempotent_replay is True
+        assert gateway.state == {"last_entry": "x"}
+
+
+def test_read_only_timeout_is_retriable() -> None:
+    fault = FaultSpec(fault_id="t", tool="calculator", call_index=1, kind="timeout")
+    gateway = FixtureToolGateway([binding()], faults=[fault])
+    outcome = invoke(gateway, "calculator", ADD)
+    assert (outcome.error_class, outcome.retriable, outcome.ambiguous_effect) == (
+        "tool_timeout",
+        True,
+        False,
+    )
+    assert invoke(gateway, "calculator", ADD).kind == "completed"
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        [{"fault_id": "a", "tool": "calculator", "call_index": 0, "kind": "timeout"}],
+        [{"fault_id": "a", "tool": "calculator", "call_index": 1, "kind": "crash"}],
+        [
+            {
+                "fault_id": "a",
+                "tool": "calculator",
+                "call_index": 1,
+                "kind": "transient",
+                "effect_applied": True,
+            }
+        ],
+        [
+            {"fault_id": "a", "tool": "calculator", "call_index": 1, "kind": "timeout"},
+            {"fault_id": "b", "tool": "calculator", "call_index": 1, "kind": "transient"},
+        ],
+        [{"fault_id": "a", "tool": "ghost", "call_index": 1, "kind": "timeout"}],
+        {"fault": "not-a-list"},
+    ],
+)
+def test_invalid_fault_schedule_is_rejected(raw: Any) -> None:
+    with pytest.raises(ValueError):
+        parse_fault_schedule(raw, ["calculator"])
+
+
+def test_missing_fault_schedule_means_no_faults() -> None:
+    assert parse_fault_schedule(None, ["calculator"]) == ()
