@@ -26,9 +26,9 @@ def _apply(row: Row, status: str) -> None:
     """Fija el estado y las columnas que las restricciones CHECK exigen para él."""
     row.status = status
     if isinstance(row, m.Experiment):
-        sealed = status != "draft"
-        row.manifest_hash = (row.manifest_hash or f.digest()) if sealed else None
-        row.sealed_at = (row.sealed_at or f.now()) if sealed else None
+        # El sellado nunca se deshace: volver a draft sólo cambia el estado y lo rechaza el trigger.
+        if status != "draft" and row.manifest_hash is None:
+            row.manifest, row.manifest_hash, row.sealed_at = {}, f.digest(), f.now()
     elif isinstance(row, m.Run):
         if status == "queued":
             row.started_at = None

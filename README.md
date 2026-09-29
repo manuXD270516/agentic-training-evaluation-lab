@@ -2,7 +2,18 @@
 
 Laboratorio para medir éxito, herramientas, argumentos, evidencia, recuperación, latencia y coste de sistemas agénticos mediante experimentos reproducibles.
 
-**Estado: M0 (bootstrap) y tarea 2.1 de M1 implementados. Hay esqueletos de API, worker y frontend con endpoints de salud, y el esquema relacional de las entidades del dominio con sus estados validados en PostgreSQL. Todavía no hay sellado ni API de experimentos (2.2), manifests de benchmark (2.3), dataset, benchmarks, métricas calculadas ni resultados.**
+**Estado: M0 y tareas 2.1–2.2 de M1 implementadas: esquema del dominio con estados validados en PostgreSQL, sellado de experimentos con manifest canónico e inmutable, y API de experimentos y runs con idempotency keys. Todavía no hay publicación de datasets/benchmarks ni API de configuraciones (2.3), ejecución de runs (M2), dataset, métricas calculadas ni resultados.**
+
+API disponible (localhost:8000; esquema OpenAPI en `/docs`):
+
+| Método y ruta | Efecto |
+|---|---|
+| `POST /experiments` | Crea un draft; exige `Idempotency-Key` |
+| `GET` / `PATCH /experiments/{id}` | Lee o edita un draft; editar uno sellado devuelve 409 |
+| `POST /experiments/{id}/seal` | Sella con manifest RFC 8785 + SHA-256; exige benchmark y agentes |
+| `GET /experiments/{id}/manifest` | Manifest sellado y su hash |
+| `POST /experiments/{id}/runs` | Encola una celda (202, `queued`); exige `Idempotency-Key` |
+| `GET /experiments/{id}/runs`, `GET /runs/{id}` | Consulta de celdas |
 
 Primer change: [define-evaluation-lab-foundation](openspec/changes/define-evaluation-lab-foundation/proposal.md).
 

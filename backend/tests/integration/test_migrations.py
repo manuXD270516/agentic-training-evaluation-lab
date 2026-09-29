@@ -24,6 +24,27 @@ LIFECYCLE_TABLES: dict[str, Lifecycle[Any]] = {
 }
 
 
+IMMUTABLE_TABLES = (
+    "datasets",
+    "scenarios",
+    "dataset_scenarios",
+    "benchmarks",
+    "tool_definitions",
+    "model_configurations",
+    "agent_configurations",
+    "agent_roles",
+    "agent_tools",
+)
+
+FUNCTIONS = (
+    "enforce_status_transition",
+    "forbid_published_mutation",
+    "guard_published_child",
+    "protect_sealed_experiment",
+    "protect_sealed_experiment_agents",
+)
+
+
 def _literals(definition: str) -> set[str]:
     return set(re.findall(r"'([^']*)'", definition))
 
@@ -38,7 +59,11 @@ def test_upgrade_creates_full_schema_on_empty_database(empty_database: Engine) -
             conn.execute(text("SELECT tgname FROM pg_trigger WHERE NOT tgisinternal")).scalars()
         )
     assert tables == set(Base.metadata.tables) | {"alembic_version"}
-    assert triggers == {f"{table}_status_transition" for table in LIFECYCLE_TABLES}
+    assert triggers == (
+        {f"{table}_status_transition" for table in LIFECYCLE_TABLES}
+        | {f"{table}_immutable" for table in IMMUTABLE_TABLES}
+        | {"experiments_sealed_immutable", "experiment_agents_sealed_immutable"}
+    )
 
 
 def test_models_and_migrations_do_not_drift(migrated_database: Engine) -> None:
@@ -54,7 +79,8 @@ def test_downgrade_to_base_and_upgrade_again(empty_database: Engine) -> None:
     with empty_database.connect() as conn:
         assert set(inspect(conn).get_table_names()) == {"alembic_version"}
         functions: int = conn.execute(
-            text("SELECT count(*) FROM pg_proc WHERE proname = 'enforce_status_transition'")
+            text("SELECT count(*) FROM pg_proc WHERE proname = ANY(:names)"),
+            {"names": list(FUNCTIONS)},
         ).scalar_one()
         assert functions == 0
     with empty_database.begin() as conn:

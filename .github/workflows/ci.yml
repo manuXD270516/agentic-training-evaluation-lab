@@ -98,6 +98,16 @@ jobs:
         run: |
           result=$(docker compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT count(*) = 1 AND to_regclass('"'"'public.experiments'"'"') IS NOT NULL FROM alembic_version"')
           test "$result" = "t"
+      - name: API de experimentos con idempotencia
+        run: |
+          body='{"hypothesis":"smoke","repetitions":1,"seeds":[11]}'
+          api=http://127.0.0.1:8000/experiments
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$api" -H 'Content-Type: application/json' -d "$body")" = 400
+          first=$(curl --fail -s -X POST "$api" -H 'Content-Type: application/json' -H 'Idempotency-Key: smoke-1' -d "$body")
+          replay_headers=$(curl --fail -s -D - -o /dev/null -X POST "$api" -H 'Content-Type: application/json' -H 'Idempotency-Key: smoke-1' -d "$body")
+          grep -qi '^idempotent-replayed: true' <<<"$replay_headers"
+          id=$(jq -r .id <<<"$first")
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$api/$id/seal")" = 422
       - name: El worker no tiene salida de red
         run: |
           if docker compose exec -T worker python -c "import socket; socket.create_connection(('1.1.1.1', 443), timeout=3)"; then

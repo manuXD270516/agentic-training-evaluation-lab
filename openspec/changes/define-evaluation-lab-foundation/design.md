@@ -131,6 +131,7 @@ Decisiones de entorno tomadas en M0 (2026-09-29). No cambian comportamiento de l
 | Python | CPython 3.14.7 (`backend/.python-version`, `requires-python ==3.14.7`) | Última estable; misma versión exacta en local (gestionada por uv), CI e imagen `python:3.14.7-slim-trixie` |
 | Gestor Python | uv 0.12.20 (`required-version`), `uv.lock` con hashes, dependencias directas `==`, build backend `uv_build==0.12.20` | Un solo binario para intérprete, entorno y lock; `--locked` falla si el lock no corresponde |
 | Backend | FastAPI 0.141.1, Uvicorn 0.54.0, pydantic-settings 2.15.0, psycopg[binary] 3.3.6 | Mínimo para control plane, worker y comprobación de PostgreSQL; sin ORM hasta M1 |
+| JSON canónico | rfc8785 0.1.4 (Trail of Bits, sin dependencias) | Implementación de RFC 8785 verificada con los vectores de números y orden UTF-16 del RFC; evita serializar floats a mano |
 | Calidad Python | Ruff 0.16.9 (formato y lint), mypy 2.3.1 `strict`, pytest 9.1.1, httpx2 2.13.1 (TestClient de Starlette 1.x) | Formato/tipos exigidos por 1.2 con herramientas deterministas y sin red |
 | Node | 22.23.1 (`.nvmrc`, `engines`, `engineStrict`) | Instalada localmente y LTS en mantenimiento hasta 2027-04-30; revisar paso a Node 24 LTS antes de M10 |
 | Gestor frontend | pnpm 12.4.2 (`packageManager`), workspace raíz + `frontend/`, `saveExact`, `--frozen-lockfile` | Aislamiento estricto de dependencias y un único `pnpm-lock.yaml` que también fija la CLI de OpenSpec |

@@ -296,11 +296,13 @@ class Experiment(Base):
         CheckConstraint(
             "status = 'draft' OR benchmark_id IS NOT NULL", name="sealed_has_benchmark"
         ),
+        CheckConstraint("(manifest IS NULL) = (manifest_hash IS NULL)", name="manifest_with_hash"),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
     hypothesis: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, server_default=text("'draft'"))
+    manifest: Mapped[Any | None] = mapped_column(JSONB)
     manifest_hash: Mapped[str | None] = mapped_column(Text)
     benchmark_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     benchmark_version: Mapped[str | None] = mapped_column(Text)
@@ -483,3 +485,21 @@ class Score(Base):
     numerator: Mapped[Decimal | None] = mapped_column(Numeric)
     denominator: Mapped[Decimal | None] = mapped_column(Numeric)
     evidence_refs: Mapped[Any] = jsonb("[]")
+
+
+class IdempotencyKey(Base):
+    """Clave registrada en la misma transacción que el efecto de la solicitud."""
+
+    __tablename__ = "idempotency_keys"
+    __table_args__ = (
+        CheckConstraint(sha256("request_hash"), name="request_hash_sha256"),
+        CheckConstraint("char_length(key) BETWEEN 1 AND 255", name="key_length"),
+        CheckConstraint("(status_code IS NULL) = (response IS NULL)", name="response_complete"),
+    )
+
+    scope: Mapped[str] = mapped_column(Text, primary_key=True)
+    key: Mapped[str] = mapped_column(Text, primary_key=True)
+    request_hash: Mapped[str] = mapped_column(Text)
+    status_code: Mapped[int | None] = mapped_column(Integer)
+    response: Mapped[Any | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = created_at()

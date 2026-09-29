@@ -3,7 +3,7 @@ schema: spec-driven
 context: |
   Proyecto: agentic-training-evaluation-lab. Documentación en español.
   Laboratorio de evaluación reproducible de agentes; no chatbot.
-  Estado: M0 y tarea 2.1 implementados; 2.2 en adelante pendiente. Toolchain en design.md §9.
+  Estado: M0 y tareas 2.1-2.2 implementados; 2.3 en adelante pendiente. Toolchain en design.md §9.
   Arquitectura propuesta: FastAPI, React, PostgreSQL, OpenTelemetry.
   PGVector sólo para benchmark retrieval; MCP opcional y diferido.
   Evaluación determinística primero; judge auxiliar y explícitamente limitado.
