@@ -24,8 +24,10 @@
 
 ## 4. M3 — Deterministic evals
 
-- [ ] 4.1 Implementar checks determinísticos y estructurales declarativos (evaluation-engine); verificar resultado correcto/incorrecto y mutaciones de salida que deben fallar.
-- [ ] 4.2 Implementar checks de políticas y evidencia (evaluation-engine); verificar respuesta correcta con tool prohibida, cita inexistente y cita sin soporte.
+- [x] 4.1 Implementar checks determinísticos y estructurales declarativos (evaluation-engine); verificar resultado correcto/incorrecto y mutaciones de salida que deben fallar.
+  - Evidencia: pytest local (tests/test_evaluation.py, 2026-09-29) sobre trazas reales del runner scripted: resultado correcto pasa todos los gates; incorrecto falla outcome y task; mutaciones de valor, campo ausente, tipo, casi-igual, null, array y campo extra fallan; tolerancias abs/rel sólo si se declaran; arrays ordenados salvo `set_equality`; argumentos schema-válidos con unidades erróneas fallan semantic_arguments; tool requerida sin llamar falla; excepción del evaluador u operador desconocido dan `error` y task `unknown`; traza incompleta deja checks de proceso `unknown`; timeout/budget fallan e infraestructura queda `unknown`.
+- [x] 4.2 Implementar checks de políticas y evidencia (evaluation-engine); verificar respuesta correcta con tool prohibida, cita inexistente y cita sin soporte.
+  - Evidencia: mismo archivo: respuesta correcta con tool prohibida da raw_outcome_pass `pass` y task_success `fail` con evidencia al `policy.violation`; `forbidden_tool` distingue intento y ejecución; cita inexistente falla `citation_not_found`; cita a `tool.requested`, `tool.validated`, `run.started` o a otra tool falla `citation_unsupported`; citas vacías o mal formadas fallan.
 - [ ] 4.3 Persistir evaluaciones/scores versionados y fórmulas iniciales (metric-reporting, experiment-management); verificar N/A, unknown, error, denominador cero y ejemplo 7/10.
 
 ## 5. M4 — Trace capture

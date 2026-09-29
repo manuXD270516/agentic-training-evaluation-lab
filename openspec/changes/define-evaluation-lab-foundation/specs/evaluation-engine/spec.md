@@ -28,6 +28,18 @@ El sistema SHALL validar salida, elección de tools, schemas, semántica de argu
 - **WHEN** no existe oráculo ni evidencia suficiente para verificar una afirmación abierta
 - **THEN** el estado es unknown o rating auxiliar, no hecho verificado.
 
+#### Scenario: Output mutation
+- **WHEN** la salida cambia valor, tipo, campo obligatorio o añade un campo no permitido respecto al oráculo
+- **THEN** el check de outcome o de estructura correspondiente falla y task_success falla.
+
+#### Scenario: Nonexistent citation
+- **WHEN** la salida cita un id de evidencia que no existe en la traza
+- **THEN** el check de evidencia falla aunque el valor de la respuesta sea correcto.
+
+#### Scenario: Unsupported citation
+- **WHEN** la salida cita un evento existente que no es el resultado exitoso de una tool
+- **THEN** el check de evidencia falla como cita sin soporte.
+
 ### Requirement: Restricted LLM judge
 
 El sistema SHALL exigir razón de ausencia de oráculo, rúbrica/modelo versionados, schema, evidencia y abstención para judge; SHALL impedir que sobreescriba gates determinísticos.
