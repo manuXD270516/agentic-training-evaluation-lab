@@ -1,0 +1,51 @@
+schema: spec-driven
+
+context: |
+  Proyecto: agentic-training-evaluation-lab. Documentación en español.
+  Laboratorio de evaluación reproducible de agentes; no chatbot.
+  Estado: diseño solamente. No implementar hasta una instrucción posterior.
+  Arquitectura propuesta: FastAPI, React, PostgreSQL, OpenTelemetry.
+  PGVector sólo para benchmark retrieval; MCP opcional y diferido.
+  Evaluación determinística primero; judge auxiliar y explícitamente limitado.
+  No confundir datos sintéticos, objetivos ni fixtures con resultados medidos.
+  Flujo: proposal -> specs + design -> tasks -> implementación -> verificación -> archive.
+rules:
+  specs:
+    - Usar requisitos SHALL y escenarios WHEN/THEN con casos negativos.
+    - Definir denominadores, datos ausentes, versionado y evidencia observable.
+  design:
+    - Separar configuración del agente, oráculos privados y ejecución aislada.
+    - Explicitar reproducibilidad limitada de proveedores remotos.
+  tasks:
+    - Cada tarea debe referenciar capability y evidencia de verificación.
+
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+# Add your tech stack, conventions, style guides, domain knowledge, etc.
+# Example:
+#   context: |
+#     Tech stack: TypeScript, React, Node.js
+#     We use conventional commits
+#     Domain: e-commerce platform
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing
