@@ -443,6 +443,7 @@ class Run(Base):
     mode: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, server_default=text("'queued'"))
     error_class: Mapped[str | None] = mapped_column(Text)
+    result: Mapped[Any | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = created_at()
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -474,6 +475,37 @@ class Trace(Base):
     completeness: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at()
     sealed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class TraceEvent(Base):
+    """Evento de evidencia; el sink lo acumula en memoria y el worker lo persiste al sellar."""
+
+    __tablename__ = "trace_events"
+    __table_args__ = (
+        UniqueConstraint("run_id", "sequence"),
+        CheckConstraint(one_of("type", vocab.TRACE_EVENT_TYPES), name="type"),
+        CheckConstraint(one_of("actor_role", vocab.TRACE_ACTOR_ROLES), name="actor_role"),
+        CheckConstraint(sha256("payload_digest"), name="payload_digest_sha256"),
+        CheckConstraint("sequence >= 1", name="sequence_positive"),
+        CheckConstraint("elapsed_ms >= 0", name="elapsed_non_negative"),
+    )
+
+    event_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, primary_key=True, server_default=func.gen_random_uuid()
+    )
+    run_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("runs.id"))
+    attempt_id: Mapped[uuid.UUID] = mapped_column(Uuid)
+    sequence: Mapped[int] = mapped_column(Integer)
+    timestamp_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    elapsed_ms: Mapped[int] = mapped_column(Integer)
+    type: Mapped[str] = mapped_column(Text)
+    actor_role: Mapped[str] = mapped_column(Text)
+    parent_event_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    otel_trace_id: Mapped[str | None] = mapped_column(Text)
+    otel_span_id: Mapped[str | None] = mapped_column(Text)
+    payload: Mapped[Any] = jsonb()
+    payload_digest: Mapped[str] = mapped_column(Text)
+    redaction_metadata: Mapped[Any] = jsonb("{}")
 
 
 class Evaluation(Base):

@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue as JsonValue, model_validator
 
 from evallab.db.models import SEMVER, SHA256
 
@@ -106,6 +106,30 @@ class RunOut(BaseModel):
     created_at: datetime
     started_at: datetime | None
     ended_at: datetime | None
+    result: JsonObject | None = None
+
+
+class TraceEventOut(BaseModel):
+    event_id: uuid.UUID
+    sequence: int
+    timestamp_utc: datetime
+    elapsed_ms: int
+    type: str
+    actor_role: str
+    parent_event_id: uuid.UUID | None
+    payload: JsonObject
+    payload_digest: str
+    redaction_metadata: JsonObject
+
+
+class TraceOut(BaseModel):
+    run_id: uuid.UUID
+    schema_version: str
+    event_count: int
+    digest: str | None
+    completeness: str | None
+    sealed_at: datetime | None
+    events: list[TraceEventOut]
 
 
 # --- Catálogo versionado (M1, 2.3) --------------------------------------------------------

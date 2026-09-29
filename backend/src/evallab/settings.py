@@ -62,3 +62,4 @@ class WorkerSettings(BaseSettings):
     health_host: str = "127.0.0.1"
     health_port: int = Field(default=8001, ge=1, le=65535)
     heartbeat_interval_s: float = Field(default=10.0, gt=0, le=3600)
+    poll_interval_s: float = Field(default=0.5, gt=0, le=3600)

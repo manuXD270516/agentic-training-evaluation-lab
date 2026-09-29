@@ -44,3 +44,11 @@ El sistema SHALL identificar baseline scripted como prueba del harness, introduc
 - **WHEN** M5 se ejecuta sin modelo live
 - **THEN** los resultados indican scripted y no se atribuyen a rendimiento de un LLM.
 
+#### Scenario: Scripted live without model
+- **WHEN** un run `live` usa `pattern=scripted` con `pattern_parameters.script` de acciones tool/final
+- **THEN** el runner no llama a ModelGateway, `usage.model_calls` es 0, el resultado lleva etiqueta `scripted` y la traza incluye evidencia de tools y un evento terminal.
+
+#### Scenario: Deferred patterns are not presented as implemented
+- **WHEN** un run usa `pattern=react` o `pattern=planner_executor` antes de M6/M7
+- **THEN** el run termina en fallo tipado y no se reporta como ejecución de esos patrones.
+

@@ -44,7 +44,7 @@ def test_worker_health_reports_policy_and_heartbeat() -> None:
     with TestClient(app) as client:
         body = client.get("/health").json()
     assert body["service"] == "worker"
-    assert body["queue"] == "not_implemented"
+    assert body["queue"] == "polling"
     assert body["sandbox"] == {"network": "deny", "host_tools": False}
     assert body["last_heartbeat"] is not None
 

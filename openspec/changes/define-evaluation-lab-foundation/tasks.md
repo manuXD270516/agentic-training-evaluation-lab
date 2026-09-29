@@ -15,7 +15,8 @@
 
 ## 3. M2 — Agent Runner
 
-- [ ] 3.1 Implementar contratos y baseline scripted con eventos mínimos (agent-execution, trace-capture); verificar resultado offline con evidencia y estado terminal.
+- [x] 3.1 Implementar contratos y baseline scripted con eventos mínimos (agent-execution, trace-capture); verificar resultado offline con evidencia y estado terminal.
+  - Evidencia: pytest local 130 passed (2026-09-29), incluidos runner scripted sin ModelGateway, tool denegada, patrón diferido, replay no implementado, integridad de event_id, run `completed` con `usage.model_calls=0` y etiqueta `scripted`, `GET /runs/{id}/trace` sellada sin oráculo, y claim `SKIP LOCKED` sobre DB vacía.
 - [ ] 3.2 Implementar gateway de tools, validación y aislamiento de fixtures (agent-execution); verificar tool prohibida, argumentos incorrectos y ausencia de estado compartido.
 - [ ] 3.3 Implementar límites, timeouts, retries y leases/fencing (agent-execution); verificar corte por presupuesto y worker vencido sin efectos duplicados.
 

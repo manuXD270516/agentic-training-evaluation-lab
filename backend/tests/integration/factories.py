@@ -3,6 +3,7 @@
 import hashlib
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -59,12 +60,15 @@ def scenario(db: Session) -> m.Scenario:
     return row
 
 
-def agent(db: Session) -> m.AgentConfiguration:
+def agent(
+    db: Session, *, pattern: str = "scripted", pattern_parameters: dict[str, Any] | None = None
+) -> m.AgentConfiguration:
     row = m.AgentConfiguration(
         id=uuid.uuid4(),
         version="1.0.0",
-        pattern="scripted",
+        pattern=pattern,
         pattern_version="1.0.0",
+        pattern_parameters=pattern_parameters or {},
         content_hash=digest(),
     )
     db.add(row)

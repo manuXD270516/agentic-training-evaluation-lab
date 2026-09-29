@@ -21,6 +21,8 @@ from evallab.schemas import (
     ExperimentUpdate,
     RunCreate,
     RunOut,
+    TraceEventOut,
+    TraceOut,
     VersionRef,
 )
 from evallab.services.errors import (
@@ -81,6 +83,7 @@ def run_to_out(run: m.Run) -> RunOut:
         created_at=run.created_at,
         started_at=run.started_at,
         ended_at=run.ended_at,
+        result=run.result if isinstance(run.result, dict) else None,
     )
 
 
@@ -359,4 +362,32 @@ def list_runs(db: Session, experiment_id: uuid.UUID) -> list[m.Run]:
             .where(m.Run.experiment_id == experiment_id)
             .order_by(m.Run.created_at, m.Run.id)
         )
+    )
+
+
+def trace_to_out(trace: m.Trace, events: list[m.TraceEvent]) -> TraceOut:
+    return TraceOut(
+        run_id=trace.run_id,
+        schema_version=trace.schema_version,
+        event_count=trace.event_count,
+        digest=trace.digest,
+        completeness=trace.completeness,
+        sealed_at=trace.sealed_at,
+        events=[
+            TraceEventOut(
+                event_id=event.event_id,
+                sequence=event.sequence,
+                timestamp_utc=event.timestamp_utc,
+                elapsed_ms=event.elapsed_ms,
+                type=event.type,
+                actor_role=event.actor_role,
+                parent_event_id=event.parent_event_id,
+                payload=event.payload if isinstance(event.payload, dict) else {},
+                payload_digest=event.payload_digest,
+                redaction_metadata=(
+                    event.redaction_metadata if isinstance(event.redaction_metadata, dict) else {}
+                ),
+            )
+            for event in events
+        ],
     )

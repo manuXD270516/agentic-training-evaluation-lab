@@ -2,7 +2,7 @@
 
 Laboratorio para medir éxito, herramientas, argumentos, evidencia, recuperación, latencia y coste de sistemas agénticos mediante experimentos reproducibles.
 
-**Estado: M0 y tareas 2.1–2.3 de M1 implementadas: esquema del dominio, sellado de experimentos, idempotencia API, y publicación inmutable de fixtures, tools, escenarios, datasets y benchmarks con vista pública sin oráculos. Todavía no hay API de configuraciones de agente, ejecución de runs (M2), dataset piloto de 14 casos (M5), métricas calculadas ni resultados.**
+**Estado: M0–M1 y tarea 3.1 de M2: contratos del runner, baseline scripted offline, eventos mínimos sellados en `Trace`/`TraceEvent` y worker que toma celdas `queued`. Todavía no hay gateway real de tools (3.2), leases/fencing (3.3), dataset piloto de 14 casos (M5), métricas calculadas ni resultados de negocio.**
 
 API disponible (localhost:8000; esquema OpenAPI en `/docs`):
 
@@ -19,7 +19,8 @@ API disponible (localhost:8000; esquema OpenAPI en `/docs`):
 | `POST /experiments/{id}/seal` | Sella con manifest RFC 8785 + SHA-256; exige benchmark y agentes |
 | `GET /experiments/{id}/manifest` | Manifest sellado y su hash |
 | `POST /experiments/{id}/runs` | Encola una celda (202, `queued`); exige `Idempotency-Key` |
-| `GET /experiments/{id}/runs`, `GET /runs/{id}` | Consulta de celdas |
+| `GET /experiments/{id}/runs`, `GET /runs/{id}` | Consulta de celdas; el resultado aparece tras la ejecución |
+| `GET /runs/{id}/trace` | Eventos ordenados, digest y completeness de la traza sellada |
 
 Primer change: [define-evaluation-lab-foundation](openspec/changes/define-evaluation-lab-foundation/proposal.md).
 
@@ -37,7 +38,8 @@ Las specs del change describen comportamiento futuro. `openspec/specs` permanece
 ```text
 backend/                 Python 3.14.7 + uv (paquete `evallab`)
   src/evallab/api/       Control plane FastAPI: /health, /health/ready
-  src/evallab/worker/    Worker: heartbeat, /health, /health/ready; sin cola todavía (M2)
+  src/evallab/worker/    Worker: heartbeat, polling SKIP LOCKED, /health; leases/fencing en 3.3
+  src/evallab/runner/    Contratos, sink en memoria y patrón scripted
   src/evallab/settings.py  Configuración por entorno y SandboxPolicy (red denegada)
   src/evallab/domain/    Máquinas de estados y vocabularios cerrados del design
   src/evallab/db/        Modelos SQLAlchemy, migraciones Alembic y `evallab-migrate`

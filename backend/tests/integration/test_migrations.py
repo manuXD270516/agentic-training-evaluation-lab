@@ -118,6 +118,8 @@ def test_status_triggers_encode_domain_lifecycles(migrated_database: Engine) -> 
         ("ck_tool_definitions_effect_class", set(vocab.TOOL_EFFECT_CLASSES)),
         ("ck_model_configurations_seed_support", set(vocab.SEED_SUPPORT)),
         ("ck_traces_completeness", set(vocab.TRACE_COMPLETENESS)),
+        ("ck_trace_events_type", set(vocab.TRACE_EVENT_TYPES)),
+        ("ck_trace_events_actor_role", set(vocab.TRACE_ACTOR_ROLES)),
         ("ck_scores_status", set(vocab.SCORE_STATUSES)),
         ("ck_scores_scope", set(vocab.SCORE_SCOPES)),
         ("ck_experiments_status", set(EXPERIMENT_LIFECYCLE.states)),

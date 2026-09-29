@@ -12,6 +12,10 @@ El sistema SHALL persistir eventos conforme trace-format.md, con ids, secuencia,
 - **WHEN** el collector OpenTelemetry está caído y la persistencia está disponible
 - **THEN** la traza de evaluación conserva todos los eventos.
 
+#### Scenario: Scripted events are sealed after in-memory capture
+- **WHEN** un run scripted termina
+- **THEN** el sink asigna secuencia en memoria, se sella contador/digest/completeness y `GET /runs/{id}/trace` devuelve los eventos ordenados sin oráculo.
+
 ### Requirement: Trace integrity
 
 El sistema SHALL sellar contador y digest, detectar duplicados conflictivos y marcar trazas incompletas; SHALL impedir éxito verificado con evidencia obligatoria ausente.

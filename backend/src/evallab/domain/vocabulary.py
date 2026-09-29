@@ -34,6 +34,33 @@ RUN_ERROR_CLASSES = (
 
 TRACE_COMPLETENESS = ("complete", "incomplete", "invalid")
 
+TRACE_SCHEMA_VERSION = "1.0"
+
+TRACE_ACTOR_ROLES = ("executor", "harness", "planner")
+
+TRACE_EVENT_TYPES = (
+    "model.completed",
+    "model.failed",
+    "model.requested",
+    "plan.created",
+    "policy.violation",
+    "retrieval.completed",
+    "retry.scheduled",
+    "run.budget_exceeded",
+    "run.cancelled",
+    "run.completed",
+    "run.failed",
+    "run.started",
+    "run.timed_out",
+    "step.completed",
+    "step.started",
+    "tool.completed",
+    "tool.denied",
+    "tool.failed",
+    "tool.requested",
+    "tool.validated",
+)
+
 SCORE_STATUSES = ("pass", "fail", "unknown", "not_applicable", "error")
 
 SCORE_SCOPES = ("agent", "judge", "harness")

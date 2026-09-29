@@ -12,8 +12,10 @@ from evallab.schemas import (
     ManifestOut,
     RunCreate,
     RunOut,
+    TraceOut,
 )
 from evallab.services import experiments as svc
+from evallab.services import execution as execution_svc
 from evallab.services.errors import ExperimentNotSealedError
 from evallab.services.idempotency import run_idempotent
 
@@ -114,3 +116,10 @@ def list_runs(request: Request, experiment_id: uuid.UUID) -> list[RunOut]:
 def get_run(request: Request, run_id: uuid.UUID) -> RunOut:
     with sessions(request).begin() as db:
         return svc.run_to_out(svc.get_run(db, run_id))
+
+
+@router.get("/runs/{run_id}/trace")
+def get_run_trace(request: Request, run_id: uuid.UUID) -> TraceOut:
+    with sessions(request).begin() as db:
+        trace, events = execution_svc.get_trace(db, run_id)
+        return svc.trace_to_out(trace, events)
