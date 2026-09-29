@@ -88,6 +88,8 @@ def _world(
     runs: int = 1,
     limits: dict[str, Any] | None = None,
     faults: list[dict[str, Any]] | None = None,
+    oracle: dict[str, Any] | None = None,
+    evaluation: dict[str, Any] | None = None,
 ) -> World:
     bench = f.benchmark(db)
     calculator = _tool(
@@ -135,6 +137,14 @@ def _world(
         "kind": "transient",
     }
     schedule = [{**fault, "tool": fault["tool"].format(**names)} for fault in faults or []]
+    if oracle is not None:
+        oracle = {
+            **oracle,
+            "checks": [
+                {**c, "tool": c["tool"].format(**names)} if "tool" in c else c
+                for c in oracle.get("checks", [])
+            ],
+        }
     scenario = m.Scenario(
         id=uuid.uuid4(),
         version="1.0.0",
@@ -148,7 +158,8 @@ def _world(
             for t in (calculator, ledger)
         ],
         environment={"initial_state": INITIAL_STATE, "fault_schedule": [*schedule, hidden_fault]},
-        oracle_ref={"checks": [{"value": ORACLE_SECRET}]},
+        oracle_ref=oracle or {"checks": [{"value": ORACLE_SECRET}]},
+        evaluation=evaluation or {},
         limits=limits or {"max_steps": 6},
         content_hash=f.digest(),
     )

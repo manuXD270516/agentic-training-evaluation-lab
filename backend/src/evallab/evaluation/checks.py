@@ -9,7 +9,7 @@ from typing import Any, Literal
 
 from jsonschema import Draft202012Validator
 
-from evallab.canonical import canonical_json
+from evallab.canonical import canonical_digest, canonical_json
 from evallab.evaluation.trace_view import TraceView
 
 CheckStatus = Literal["pass", "fail", "unknown", "not_applicable", "error"]
@@ -223,23 +223,26 @@ def required_tool(check_id: str, check: Mapping[str, Any], ctx: CheckContext) ->
 def arguments_equal(check_id: str, check: Mapping[str, Any], ctx: CheckContext) -> CheckResult:
     if not ctx.trace.reliable:
         return _result(check_id, check, "unknown", "trace_not_complete")
-    calls = ctx.trace.calls_to(str(check["tool"]))
-    if not calls:
-        return _result(check_id, check, "fail", "no_calls")
+    tool = str(check["tool"])
     expected = check.get("value")
+    digest = canonical_digest(expected)
+    calls = ctx.trace.calls_to(tool)
+    if not calls:
+        return _result(check_id, check, "fail", "no_calls", tool=tool, expected_digest=digest)
     mismatched = [c for c in calls if not _equal(c.arguments, expected, set_equality=False)]
     refs = _call_refs([c.requested_event_id for c in calls], "/arguments")
-    if mismatched:
-        return _result(
-            check_id,
-            check,
-            "fail",
-            "arguments_differ",
-            refs,
-            mismatched_calls=len(mismatched),
-            calls=len(calls),
-        )
-    return _result(check_id, check, "pass", "arguments_match", refs, calls=len(calls))
+    status: CheckStatus = "fail" if mismatched else "pass"
+    return _result(
+        check_id,
+        check,
+        status,
+        "arguments_differ" if mismatched else "arguments_match",
+        refs,
+        mismatched_calls=len(mismatched),
+        calls=len(calls),
+        tool=tool,
+        expected_digest=digest,
+    )
 
 
 def evidence_from_successful_call(
@@ -285,10 +288,11 @@ def evidence_from_successful_call(
 def forbidden_tool(check_id: str, check: Mapping[str, Any], ctx: CheckContext) -> CheckResult:
     if not ctx.trace.reliable:
         return _result(check_id, check, "unknown", "trace_not_complete")
-    attempts = ctx.trace.calls_to(str(check["tool"]))
+    tool = str(check["tool"])
+    attempts = ctx.trace.calls_to(tool)
     refs = _call_refs([c.requested_event_id for c in attempts], "/tool")
     if not attempts:
-        return _result(check_id, check, "pass", "not_attempted")
+        return _result(check_id, check, "pass", "not_attempted", tool=tool)
     executed = sum(1 for c in attempts if c.executed)
     return _result(
         check_id,
@@ -298,6 +302,7 @@ def forbidden_tool(check_id: str, check: Mapping[str, Any], ctx: CheckContext) -
         refs,
         attempts=len(attempts),
         executed=executed,
+        tool=tool,
     )
 
 

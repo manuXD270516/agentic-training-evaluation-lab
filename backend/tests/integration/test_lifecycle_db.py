@@ -37,6 +37,13 @@ def _apply(row: Row, status: str) -> None:
             row.fencing_token = max(row.fencing_token or 0, 1)
         row.ended_at = None if status in m.RUN_ACTIVE else f.now()
         row.error_class = "infrastructure_error" if status == "failed" else None
+    else:
+        terminal = status in ("completed", "error")
+        row.completed_at = f.now() if terminal else None
+        row.report = {} if status == "completed" else None
+        row.metric_profile_version = "1.0.0" if status == "completed" else None
+        row.metric_profile_hash = f.digest() if status == "completed" else None
+        row.error = "test" if status == "error" else None
 
 
 def _path(lifecycle: Lifecycle[Any], target: str) -> list[str]:

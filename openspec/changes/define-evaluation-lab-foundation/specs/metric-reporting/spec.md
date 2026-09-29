@@ -12,6 +12,14 @@ El sistema SHALL aplicar fórmulas, ámbitos, unidades y agregaciones de metrics
 - **WHEN** un escenario requiere tools pero el agente no llama ninguna
 - **THEN** tool_accuracy es N/A, required_tool_coverage es cero y la tarea falla.
 
+#### Scenario: Zero denominator
+- **WHEN** una métrica de ratio no tiene unidades que medir en un run
+- **THEN** su score es not_applicable con numerador y denominador 0 y valor nulo, nunca 0, 1 ni NaN.
+
+#### Scenario: Evaluator error
+- **WHEN** un check o el evaluador falla con una excepción
+- **THEN** la métrica afectada queda error sin valor, task_success queda unknown y en agregados cuenta como unknown.
+
 ### Requirement: Missingness and cost disclosure
 
 El sistema SHALL reportar denominadores, unknown, N/A, cobertura y subtotales conocidos; SHALL incluir fallos en recursos consumidos sin inventar uso o precio.

@@ -133,6 +133,35 @@ class TraceOut(BaseModel):
     events: list[TraceEventOut]
 
 
+class ScoreOut(BaseModel):
+    metric_id: str
+    metric_version: str
+    scope: str
+    status: str
+    unit: str
+    value: float | None
+    numerator: int | None
+    denominator: int | None
+    evidence_refs: list[JsonObject]
+
+
+class EvaluationOut(BaseModel):
+    id: uuid.UUID
+    run_id: uuid.UUID
+    trace_digest: str
+    evaluator_suite_hash: str
+    evaluator_suite_version: str | None
+    metric_profile_version: str | None
+    metric_profile_hash: str | None
+    parent_evaluation_id: uuid.UUID | None
+    status: str
+    error: str | None
+    report: JsonObject | None
+    scores: list[ScoreOut]
+    created_at: datetime
+    completed_at: datetime | None
+
+
 # --- Catálogo versionado (M1, 2.3) --------------------------------------------------------
 
 

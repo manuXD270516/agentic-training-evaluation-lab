@@ -555,17 +555,32 @@ class Evaluation(Base):
         CheckConstraint(sha256("trace_digest"), name="trace_digest_sha256"),
         CheckConstraint(sha256("evaluator_suite_hash"), name="evaluator_suite_hash_sha256"),
         CheckConstraint("parent_evaluation_id <> id", name="parent_not_self"),
+        CheckConstraint(
+            sha256("metric_profile_hash", nullable=True), name="metric_profile_hash_sha256"
+        ),
+        CheckConstraint("status <> 'completed' OR report IS NOT NULL", name="completed_has_report"),
+        CheckConstraint("status <> 'error' OR error IS NOT NULL", name="error_has_cause"),
+        CheckConstraint(
+            "(status IN ('completed', 'error')) = (completed_at IS NOT NULL)",
+            name="completed_at_iff_terminal",
+        ),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
     run_id: Mapped[uuid.UUID] = mapped_column(Uuid)
     trace_digest: Mapped[str] = mapped_column(Text)
     evaluator_suite_hash: Mapped[str] = mapped_column(Text)
+    evaluator_suite_version: Mapped[str | None] = mapped_column(Text)
+    metric_profile_version: Mapped[str | None] = mapped_column(Text)
+    metric_profile_hash: Mapped[str | None] = mapped_column(Text)
     parent_evaluation_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("evaluations.id")
     )
     status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"))
+    report: Mapped[Any | None] = mapped_column(JSONB)
+    error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at()
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Score(Base):

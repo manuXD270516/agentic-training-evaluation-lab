@@ -8,7 +8,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import sessionmaker
 
 from evallab import __version__
-from evallab.api import catalog, experiments
+from evallab.api import catalog, evaluations, experiments
 from evallab.db.engine import create_db_engine
 from evallab.health import DatabaseCheck, check_database
 from evallab.services.errors import DomainError
@@ -44,6 +44,7 @@ def create_app(
     app.state.sessions = sessionmaker(engine or create_db_engine(db), expire_on_commit=False)
     app.include_router(experiments.router)
     app.include_router(catalog.router)
+    app.include_router(evaluations.router)
 
     @app.exception_handler(DomainError)
     def domain_error(_: Request, exc: DomainError) -> JSONResponse:
