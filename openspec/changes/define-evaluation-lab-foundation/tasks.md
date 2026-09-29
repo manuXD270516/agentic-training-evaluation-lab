@@ -33,7 +33,8 @@
 
 ## 5. M4 — Trace capture
 
-- [ ] 5.1 Implementar sink durable, digest, export y redacción (trace-capture); verificar duplicado idempotente, conflicto de digest, export truncado y secretos ausentes.
+- [x] 5.1 Implementar sink durable, digest, export y redacción (trace-capture); verificar duplicado idempotente, conflicto de digest, export truncado y secretos ausentes.
+  - Evidencia: pytest local (tests/test_redaction.py y tests/integration/test_traces.py, 2026-09-29; 275 tests en verde): reenviar el intento cerrado o sus eventos confirma sin duplicar (mismo contador y digest, intento `finished`); un event_id con otro digest y un cierre repetido con otra evidencia dan `TraceIntegrityError`; el export verifica contra la traza sellada y falla con la última línea eliminada (contador, SHA-256 y digest), línea cortada, payload alterado y manifest manipulado; el CLI `evallab-verify-trace` devuelve 0/1/2; una fixture con `api_key` y `password` sintéticos no deja esos valores en `GET /runs/{id}`, traza, export ni manifest, y el evento lleva pointers y `replay: unavailable`; `max_tokens` y claves ordinarias no se redactan.
 - [ ] 5.2 Instrumentar OpenTelemetry con correlación de run/model/tool/evaluator (trace-capture); verificar evidencia completa durante caída del collector.
 - [ ] 5.3 Implementar replay y reevaluación con manifests (reproducibility); verificar replay sin red, mismatch sin fallback y evaluación histórica preservada.
 

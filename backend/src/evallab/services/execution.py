@@ -31,10 +31,12 @@ from evallab.runner.contracts import AgentSnapshot, AllowedTool, RunContext, Run
 from evallab.runner.errors import InvalidFaultScheduleError, RunnerError
 from evallab.runner.gateways import DeniedModelGateway
 from evallab.runner.limits import Limits
+from evallab.runner.redaction import redact, redaction_metadata
 from evallab.runner.sink import MemoryTraceSink, mark_incomplete
 from evallab.runner.tools import FixtureToolGateway, ToolBinding, parse_fault_schedule
 from evallab.services.catalog import scenario_public_view
 from evallab.services.errors import NotFoundError
+from evallab.services.traces import persist_events, seal_trace
 from evallab.settings import SandboxPolicy
 
 TERMINAL_EVENT_TYPES = frozenset(
@@ -155,11 +157,12 @@ def _labels(pattern: str) -> dict[str, str]:
 
 
 def _result_document(result: RunResult, claim: Claim) -> dict[str, Any]:
+    output, redacted = redact(result.output)
     document: dict[str, Any] = {
         "pattern": result.pattern,
         "pattern_version": result.pattern_version,
         **_labels(result.pattern),
-        "output": result.output,
+        "output": output,
         "evidence_refs": [ref.as_json() for ref in result.evidence_refs],
         "usage": result.usage.as_json(),
         "policy_violations": result.policy_violations,
@@ -169,33 +172,19 @@ def _result_document(result: RunResult, claim: Claim) -> dict[str, Any]:
         document["termination"] = result.termination
     if result.error is not None:
         document["error"] = result.error
+    if redacted:
+        document["redaction_metadata"] = redaction_metadata(redacted, replayable=True)
     return document
 
 
-def _flush_events(
-    db: Session, run: m.Run, trace: m.Trace, sink: MemoryTraceSink, sealed_at: datetime
-) -> None:
-    for event in sink.events:
-        db.add(
-            m.TraceEvent(
-                event_id=event.event_id,
-                run_id=run.id,
-                attempt_id=sink.attempt_id,
-                sequence=event.sequence,
-                timestamp_utc=event.timestamp_utc,
-                elapsed_ms=event.elapsed_ms,
-                type=event.type,
-                actor_role=event.actor_role,
-                parent_event_id=event.parent_event_id,
-                payload=event.payload,
-                payload_digest=event.payload_digest,
-                redaction_metadata=event.redaction_metadata,
-            )
-        )
-    trace.event_count = len(sink.events)
-    trace.digest = sink.digest()
-    trace.completeness = sink.completeness
-    trace.sealed_at = sealed_at
+def _store_trace(db: Session, run: m.Run, sink: MemoryTraceSink, sealed_at: datetime) -> None:
+    trace = db.scalar(select(m.Trace).where(m.Trace.run_id == run.id))
+    if trace is None:
+        trace = m.Trace(run_id=run.id, schema_version=TRACE_SCHEMA_VERSION)
+        db.add(trace)
+        db.flush()
+    persist_events(db, run.id, sink.attempt_id, sink.events)
+    seal_trace(db, trace, sink.events, sink.completeness, trace.sealed_at or sealed_at)
 
 
 def _limits(exp: m.Experiment | None, scenario: m.Scenario) -> dict[str, Any]:
@@ -432,6 +421,11 @@ def finish_attempt(db: Session, outcome: AttemptOutcome, *, now: datetime | None
     attempt = db.get(m.RunAttempt, claim.attempt_id, with_for_update=True)
     if run is None or attempt is None:
         return False
+    if attempt.status == "finished" and run.fencing_token == claim.fencing_token:
+        # Confirmación repetida del mismo intento: idempotente si la evidencia coincide.
+        if outcome.sink is not None:
+            _store_trace(db, run, outcome.sink, attempt.ended_at or now)
+        return True
     if run.status != RunStatus.RUNNING or run.fencing_token != claim.fencing_token:
         attempt.status = "rejected"
         attempt.ended_at = attempt.ended_at or now
@@ -440,10 +434,7 @@ def finish_attempt(db: Session, outcome: AttemptOutcome, *, now: datetime | None
 
     ended_at = max(now, run.started_at or now)
     if outcome.sink is not None:
-        trace = m.Trace(run_id=run.id, schema_version=TRACE_SCHEMA_VERSION)
-        db.add(trace)
-        db.flush()
-        _flush_events(db, run, trace, outcome.sink, ended_at)
+        _store_trace(db, run, outcome.sink, ended_at)
     result = outcome.result
     RUN_LIFECYCLE.check(RunStatus.RUNNING, result.status)
     run.status = result.status

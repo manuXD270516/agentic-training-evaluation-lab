@@ -2,7 +2,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Request, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from evallab.api.http import IdempotencyHeader, dump, require_key, respond, sessions
 from evallab.schemas import (
@@ -16,6 +16,7 @@ from evallab.schemas import (
 )
 from evallab.services import execution as execution_svc
 from evallab.services import experiments as svc
+from evallab.services import traces as trace_svc
 from evallab.services.errors import ExperimentNotSealedError
 from evallab.services.idempotency import run_idempotent
 
@@ -123,3 +124,23 @@ def get_run_trace(request: Request, run_id: uuid.UUID) -> TraceOut:
     with sessions(request).begin() as db:
         trace, events = execution_svc.get_trace(db, run_id)
         return svc.trace_to_out(trace, events)
+
+
+@router.get("/runs/{run_id}/trace/manifest")
+def get_trace_manifest(request: Request, run_id: uuid.UUID) -> dict[str, Any]:
+    with sessions(request).begin() as db:
+        return trace_svc.export_trace(db, run_id).manifest
+
+
+@router.get("/runs/{run_id}/trace/export")
+def export_run_trace(request: Request, run_id: uuid.UUID) -> Response:
+    with sessions(request).begin() as db:
+        export = trace_svc.export_trace(db, run_id)
+    return Response(
+        content=export.jsonl,
+        media_type="application/x-ndjson",
+        headers={
+            "X-Trace-Digest": str(export.manifest["trace_digest"]),
+            "X-Events-SHA256": str(export.manifest["events_sha256"]),
+        },
+    )

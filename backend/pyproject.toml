@@ -18,6 +18,7 @@ dependencies = [
 evallab-api = "evallab.api.__main__:main"
 evallab-worker = "evallab.worker.__main__:main"
 evallab-migrate = "evallab.db.migrate:main"
+evallab-verify-trace = "evallab.verify_trace:main"
 
 [build-system]
 requires = ["uv_build==0.12.20"]

@@ -48,6 +48,14 @@ def empty_database() -> Iterator[Engine]:
         yield engine
 
 
+@pytest.fixture
+def fresh_database(empty_database: Engine) -> Engine:
+    """Base migrada exclusiva del test: sin celdas `queued` de otros tests."""
+    with empty_database.begin() as conn:
+        upgrade_head(conn)
+    return empty_database
+
+
 @pytest.fixture(scope="session")
 def migrated_database() -> Iterator[Engine]:
     with temporary_database() as engine:

@@ -2,7 +2,7 @@
 
 Laboratorio para medir éxito, herramientas, argumentos, evidencia, recuperación, latencia y coste de sistemas agénticos mediante experimentos reproducibles.
 
-**Estado: M0–M3: contratos del runner, baseline scripted offline, gateway de tools sobre fixtures declarativas con validación JSON Schema, allowlist y estado aislado por run, límites de pasos/llamadas/deadline, retries trazados sobre fallos inyectados, eventos sellados en `Trace`/`TraceEvent`, worker con leases y fencing token, suite determinística `deterministic-core@1.0.0` y perfil de métricas `core-metrics@1.0.0` con evaluaciones versionadas. Todavía no hay dataset piloto de 14 casos (M5), benchmarks publicados ni resultados.**
+**Estado: M0–M3 y parte de M4: contratos del runner, baseline scripted offline, gateway de tools sobre fixtures declarativas con validación JSON Schema, allowlist y estado aislado por run, límites de pasos/llamadas/deadline, retries trazados sobre fallos inyectados, eventos sellados en `Trace`/`TraceEvent`, worker con leases y fencing token, suite determinística `deterministic-core@1.0.0` y perfil de métricas `core-metrics@1.0.0` con evaluaciones versionadas, y (M4) persistencia idempotente de eventos, redacción de secretos antes del digest y export verificable. Todavía no hay OpenTelemetry (5.2), replay (5.3), dataset piloto de 14 casos (M5), benchmarks publicados ni resultados.**
 
 API disponible (localhost:8000; esquema OpenAPI en `/docs`):
 
@@ -21,6 +21,7 @@ API disponible (localhost:8000; esquema OpenAPI en `/docs`):
 | `POST /experiments/{id}/runs` | Encola una celda (202, `queued`); exige `Idempotency-Key` |
 | `GET /experiments/{id}/runs`, `GET /runs/{id}` | Consulta de celdas; el resultado aparece tras la ejecución |
 | `GET /runs/{id}/trace` | Eventos ordenados, digest y completeness de la traza sellada |
+| `GET /runs/{id}/trace/export`, `GET /runs/{id}/trace/manifest` | Export JSONL completo (redactado) y manifest con digest y SHA-256; verificable con `uv run evallab-verify-trace manifest.json events.jsonl` |
 | `POST /runs/{id}/evaluations` | Evalúa un run terminal con suite y perfil versionados; exige `Idempotency-Key`; cada reevaluación crea una evaluación nueva |
 | `GET /runs/{id}/evaluations`, `GET /evaluations/{id}` | Historial de evaluaciones con report, scores y su estado (`pass/fail/unknown/not_applicable/error`) |
 

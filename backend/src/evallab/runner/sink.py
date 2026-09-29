@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
 from evallab.canonical import canonical_digest
 from evallab.runner.errors import TraceIntegrityError
+from evallab.runner.redaction import redact, redaction_metadata
+
+# Un campo redactado en estas llamadas impide reconstruirlas en replay.
+REPLAYED_PREFIXES = ("model.", "tool.")
 
 
 @dataclass(frozen=True)
@@ -26,7 +30,7 @@ class MemoryEvent:
 
 @dataclass
 class MemoryTraceSink:
-    """Acumula eventos en memoria; el worker los persiste al sellar (M4 añade export/OTel)."""
+    """Acumula eventos redactados en memoria; el worker los persiste al sellar."""
 
     started_at: datetime
     schema_version: str
@@ -46,7 +50,8 @@ class MemoryTraceSink:
         event_id: uuid.UUID | None = None,
     ) -> MemoryEvent:
         assigned = event_id or uuid.uuid4()
-        digest = canonical_digest(payload)
+        redacted, fields = redact(payload)
+        digest = canonical_digest(redacted)
         existing = self._by_id.get(assigned)
         if existing is not None:
             if existing.payload_digest == digest and existing.type == event_type:
@@ -65,9 +70,11 @@ class MemoryTraceSink:
             type=event_type,
             actor_role=actor_role,
             parent_event_id=parent_event_id,
-            payload=payload,
+            payload=redacted,
             payload_digest=digest,
-            redaction_metadata={},
+            redaction_metadata=redaction_metadata(
+                fields, replayable=not event_type.startswith(REPLAYED_PREFIXES)
+            ),
         )
         self._events.append(event)
         self._by_id[assigned] = event
@@ -78,17 +85,24 @@ class MemoryTraceSink:
         return tuple(self._events)
 
     def digest(self) -> str:
-        return canonical_digest(
-            [
-                {
-                    "event_id": str(event.event_id),
-                    "sequence": event.sequence,
-                    "type": event.type,
-                    "payload_digest": event.payload_digest,
-                }
-                for event in self._events
-            ]
+        return trace_digest(
+            (e.event_id, e.sequence, e.type, e.payload_digest) for e in self._events
         )
+
+
+def trace_digest(entries: Iterable[tuple[uuid.UUID | str, int, str, str]]) -> str:
+    """Digest sellado: lista ordenada de (event_id, sequence, type, payload_digest)."""
+    return canonical_digest(
+        [
+            {
+                "event_id": str(event_id),
+                "sequence": sequence,
+                "type": event_type,
+                "payload_digest": payload_digest,
+            }
+            for event_id, sequence, event_type, payload_digest in entries
+        ]
+    )
 
 
 def mark_incomplete(sink: MemoryTraceSink) -> None:

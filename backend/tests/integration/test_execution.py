@@ -13,7 +13,6 @@ from sqlalchemy.orm import Session, sessionmaker
 from evallab.api.app import create_app
 from evallab.canonical import canonical_digest
 from evallab.db import models as m
-from evallab.db.migrate import upgrade_head
 from evallab.domain.lifecycle import ExperimentStatus, RunStatus
 from evallab.schemas import FixtureCreate
 from evallab.services.catalog import publish_fixture
@@ -90,15 +89,17 @@ def _world(
     faults: list[dict[str, Any]] | None = None,
     oracle: dict[str, Any] | None = None,
     evaluation: dict[str, Any] | None = None,
+    calculator_result: dict[str, Any] | None = None,
 ) -> World:
     bench = f.benchmark(db)
+    result = calculator_result or {"total": 42}
     calculator = _tool(
         db,
         "calculator",
         effect_class="read_only",
         input_schema=CALCULATOR_INPUT,
         output_schema=TOTAL_OUTPUT,
-        fixture={"kind": "lookup", "cases": [{"arguments": ADD, "result": {"total": 42}}]},
+        fixture={"kind": "lookup", "cases": [{"arguments": ADD, "result": result}]},
     )
     ledger = _tool(
         db,
@@ -513,13 +514,6 @@ def test_invalid_fault_schedule_fails_as_infrastructure(
     assert run.error_class == "infrastructure_error"
     assert events[-1]["type"] == "run.failed"
     assert "ghost" not in json.dumps(events)
-
-
-@pytest.fixture
-def fresh_database(empty_database: Engine) -> Engine:
-    with empty_database.begin() as conn:
-        upgrade_head(conn)
-    return empty_database
 
 
 def _claim(engine: Engine, worker: str, now: datetime, **kwargs: Any) -> Claim | None:

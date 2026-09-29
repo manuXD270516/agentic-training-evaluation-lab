@@ -28,6 +28,10 @@ El sistema SHALL sellar contador y digest, detectar duplicados conflictivos y ma
 - **WHEN** se reenvía un event_id con el mismo digest
 - **THEN** se confirma sin duplicarlo; otro digest produce error de integridad.
 
+#### Scenario: Truncated export
+- **WHEN** se verifica un export JSONL al que le faltan eventos o tiene una línea cortada
+- **THEN** la verificación contra su manifest (contador, último sequence, SHA-256 y digest sellado) falla.
+
 ### Requirement: Safe observable trace
 
 El sistema SHALL redactar secretos antes de persistir/exportar y registrar acciones/observaciones sin exigir chain-of-thought oculto.
