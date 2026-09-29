@@ -34,6 +34,7 @@ IMMUTABLE_TABLES = (
     "agent_configurations",
     "agent_roles",
     "agent_tools",
+    "fixtures",
 )
 
 FUNCTIONS = (
@@ -122,6 +123,9 @@ def test_status_triggers_encode_domain_lifecycles(migrated_database: Engine) -> 
         ("ck_experiments_status", set(EXPERIMENT_LIFECYCLE.states)),
         ("ck_runs_status", set(RUN_LIFECYCLE.states)),
         ("ck_evaluations_status", set(EVALUATION_LIFECYCLE.states)),
+        ("ck_scenarios_split", set(vocab.SPLITS)),
+        ("ck_scenarios_difficulty", set(vocab.DIFFICULTIES)),
+        ("ck_datasets_coverage_class", set(vocab.COVERAGE_CLASSES)),
     ],
 )
 def test_check_constraints_match_domain_vocabulary(

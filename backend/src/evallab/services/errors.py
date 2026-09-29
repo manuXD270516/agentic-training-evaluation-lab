@@ -54,3 +54,18 @@ class RunCellExistsError(DomainError):
 class IdempotencyKeyReusedError(DomainError):
     status_code = 409
     code = "idempotency_key_reused"
+
+
+class HashMismatchError(DomainError):
+    status_code = 422
+    code = "hash_mismatch"
+
+
+class VersionExistsError(DomainError):
+    status_code = 409
+    code = "version_exists"
+
+
+class ContentDuplicateError(DomainError):
+    status_code = 409
+    code = "content_duplicate"

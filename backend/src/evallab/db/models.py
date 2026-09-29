@@ -11,6 +11,7 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     Double,
@@ -83,6 +84,11 @@ class Dataset(Base):
         UniqueConstraint("content_hash"),
         CheckConstraint(semver(), name="version_semver"),
         CheckConstraint(sha256("content_hash"), name="content_hash_sha256"),
+        CheckConstraint("synthetic IS TRUE", name="synthetic"),
+        CheckConstraint(
+            f"coverage_class IS NULL OR {one_of('coverage_class', vocab.COVERAGE_CLASSES)}",
+            name="coverage_class",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
@@ -91,6 +97,14 @@ class Dataset(Base):
     schema_version: Mapped[str] = mapped_column(Text)
     content_hash: Mapped[str] = mapped_column(Text)
     split_manifest: Mapped[Any] = jsonb()
+    synthetic: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    license: Mapped[str | None] = mapped_column(Text)
+    generator_version: Mapped[str | None] = mapped_column(Text)
+    fixture_refs: Mapped[Any] = jsonb("[]")
+    corpus_refs: Mapped[Any] = jsonb("[]")
+    category_counts: Mapped[Any] = jsonb("{}")
+    coverage_class: Mapped[str | None] = mapped_column(Text)
+    manifest: Mapped[Any | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = created_at()
 
 
@@ -98,20 +112,49 @@ class Scenario(Base):
     __tablename__ = "scenarios"
     __table_args__ = (
         UniqueConstraint("content_hash"),
+        UniqueConstraint("slug", "version"),
         CheckConstraint(semver(), name="version_semver"),
         CheckConstraint(sha256("content_hash"), name="content_hash_sha256"),
         CheckConstraint(one_of("primary_category", vocab.PRIMARY_CATEGORIES), name="category"),
+        CheckConstraint(f"split IS NULL OR {one_of('split', vocab.SPLITS)}", name="split"),
+        CheckConstraint(
+            f"difficulty IS NULL OR {one_of('difficulty', vocab.DIFFICULTIES)}",
+            name="difficulty",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
     version: Mapped[str] = mapped_column(Text, primary_key=True)
+    schema_version: Mapped[str] = mapped_column(Text, server_default=text("'1.0'"))
+    slug: Mapped[str | None] = mapped_column(Text)
     primary_category: Mapped[str] = mapped_column(Text)
     tags: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default=text("'{}'::text[]"))
+    difficulty: Mapped[str | None] = mapped_column(Text)
+    split: Mapped[str | None] = mapped_column(Text)
+    family_id: Mapped[str | None] = mapped_column(Text)
     input: Mapped[Any] = jsonb()
+    task: Mapped[Any] = jsonb("{}")
+    tools: Mapped[Any] = jsonb("[]")
+    environment: Mapped[Any] = jsonb("{}")
     fixtures: Mapped[Any] = jsonb("[]")
     oracle_ref: Mapped[Any] = jsonb()
+    evaluation: Mapped[Any] = jsonb("{}")
     limits: Mapped[Any] = jsonb()
+    retrieval: Mapped[Any | None] = mapped_column(JSONB)
+    recovery: Mapped[Any | None] = mapped_column(JSONB)
     content_hash: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at()
+
+
+class Fixture(Base):
+    """Fixture sintética identificada por hash de contenido (Artifact llega en M4)."""
+
+    __tablename__ = "fixtures"
+    __table_args__ = (CheckConstraint(sha256("content_hash"), name="content_hash_sha256"),)
+
+    content_hash: Mapped[str] = mapped_column(Text, primary_key=True)
+    name: Mapped[str] = mapped_column(Text)
+    payload: Mapped[Any] = jsonb()
     created_at: Mapped[datetime] = created_at()
 
 
@@ -146,16 +189,25 @@ class Benchmark(Base):
         UniqueConstraint("content_hash"),
         CheckConstraint(semver(), name="version_semver"),
         CheckConstraint(sha256("content_hash"), name="content_hash_sha256"),
+        CheckConstraint(
+            sha256("dataset_content_hash", nullable=True), name="dataset_content_hash_sha256"
+        ),
+        CheckConstraint("default_repetitions > 0", name="default_repetitions_positive"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
     version: Mapped[str] = mapped_column(Text, primary_key=True)
     dataset_id: Mapped[uuid.UUID] = mapped_column(Uuid)
     dataset_version: Mapped[str] = mapped_column(Text)
+    dataset_content_hash: Mapped[str | None] = mapped_column(Text)
     scenario_selection: Mapped[Any] = jsonb()
     evaluator_suite: Mapped[Any] = jsonb()
     metric_profile: Mapped[Any] = jsonb()
     comparison_rules: Mapped[Any] = jsonb()
+    default_repetitions: Mapped[int] = mapped_column(Integer, server_default=text("5"))
+    seed_schedule: Mapped[Any] = jsonb("[]")
+    budgets: Mapped[Any] = jsonb("{}")
+    manifest: Mapped[Any | None] = mapped_column(JSONB)
     content_hash: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at()
 

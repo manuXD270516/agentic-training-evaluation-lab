@@ -2,12 +2,18 @@
 
 Laboratorio para medir éxito, herramientas, argumentos, evidencia, recuperación, latencia y coste de sistemas agénticos mediante experimentos reproducibles.
 
-**Estado: M0 y tareas 2.1–2.2 de M1 implementadas: esquema del dominio con estados validados en PostgreSQL, sellado de experimentos con manifest canónico e inmutable, y API de experimentos y runs con idempotency keys. Todavía no hay publicación de datasets/benchmarks ni API de configuraciones (2.3), ejecución de runs (M2), dataset, métricas calculadas ni resultados.**
+**Estado: M0 y tareas 2.1–2.3 de M1 implementadas: esquema del dominio, sellado de experimentos, idempotencia API, y publicación inmutable de fixtures, tools, escenarios, datasets y benchmarks con vista pública sin oráculos. Todavía no hay API de configuraciones de agente, ejecución de runs (M2), dataset piloto de 14 casos (M5), métricas calculadas ni resultados.**
 
 API disponible (localhost:8000; esquema OpenAPI en `/docs`):
 
 | Método y ruta | Efecto |
 |---|---|
+| `POST /fixtures`, `GET /fixtures/{hash}` | Fixture sintética identificada por SHA-256 |
+| `POST /tool-definitions`, `GET .../{id}/versions/{version}` | Tool publicada e inmutable |
+| `POST /scenarios`, `GET .../{id}/versions/{version}` | Escenario; GET es vista pública |
+| `GET /scenarios/{id}/versions/{version}/oracle` | Oráculo privado (evaluador, no runner) |
+| `POST /datasets`, `GET .../{id}/versions/{version}` | Dataset; `coverage_class` lo calcula el servidor |
+| `POST /benchmarks`, `GET .../{id}/versions/{version}` | Protocolo de evaluación sobre un dataset |
 | `POST /experiments` | Crea un draft; exige `Idempotency-Key` |
 | `GET` / `PATCH /experiments/{id}` | Lee o edita un draft; editar uno sellado devuelve 409 |
 | `POST /experiments/{id}/seal` | Sella con manifest RFC 8785 + SHA-256; exige benchmark y agentes |
