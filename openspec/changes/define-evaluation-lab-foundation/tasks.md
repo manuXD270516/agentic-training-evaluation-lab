@@ -8,7 +8,8 @@
 
 - [x] 2.1 Implementar entidades, relaciones, migraciones y estados de design.md (experiment-management); verificar creación de DB vacía y rechazo de transiciones inválidas.
   - Evidencia: GitHub Actions run 36529075377 sobre 2163c57 (2026-09-29): 64 tests, 0 omitidos, incluidos migración sobre DB vacía, deriva modelo↔migración, downgrade/upgrade y todas las transiciones de Experiment/Run/Evaluation contra PostgreSQL 18.6; `compose-smoke` migra una DB vacía.
-- [ ] 2.2 Implementar snapshots/hash/sellado e idempotencia API (experiment-management, reproducibility); verificar mutación denegada y clave repetida/conflictiva.
+- [x] 2.2 Implementar snapshots/hash/sellado e idempotencia API (experiment-management, reproducibility); verificar mutación denegada y clave repetida/conflictiva.
+  - Evidencia: GitHub Actions run 36530654615 sobre 5de2f45 (2026-09-29): 94 tests, 0 omitidos; clave repetida (réplica), clave con otro payload (409), clave ausente, concurrencia con igual clave, celda duplicada con otra clave, edición de experimento sellado y de versiones publicadas rechazadas, hash del manifest recalculado. Mutaciones de idempotencia y triggers detectadas. Alcance de reproducibility: manifest canónico del experimento y refs resueltas; commit/entorno por run y rechazo de árbol dirty quedan para M2/M4.
 - [ ] 2.3 Implementar schemas/manifests de Dataset, Scenario y Benchmark (versioned-benchmarks); verificar refs rotas, duplicados y publicación inmutable.
 
 ## 3. M2 — Agent Runner
