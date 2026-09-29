@@ -14,7 +14,15 @@ El sistema SHALL sellar configuraciones, benchmark, presupuestos, seeds y plan d
 
 ### Requirement: Run identity and lifecycle
 
-El sistema SHALL crear una sola celda lógica por experimento, escenario/version, configuración, repetición y seed; SHALL conservar intentos y estados terminales según design.md.
+El sistema SHALL crear una sola celda lógica por experimento, escenario/version, configuración, repetición y seed; SHALL conservar intentos y estados terminales según design.md; SHALL rechazar toda transición de estado de Experiment, Run o Evaluation no declarada en design.md.
+
+#### Scenario: Reopening a terminal run
+- **WHEN** se intenta pasar un run `completed` a `running`
+- **THEN** se rechaza la transición y el run conserva su estado terminal.
+
+#### Scenario: Cancellation before start
+- **WHEN** se cancela un experimento con celdas todavía `queued`
+- **THEN** esas celdas pasan a `cancelled` sin iniciarse y siguen contando en el reporte.
 
 #### Scenario: Duplicate submission
 - **WHEN** se repite una solicitud con igual idempotency key y payload
