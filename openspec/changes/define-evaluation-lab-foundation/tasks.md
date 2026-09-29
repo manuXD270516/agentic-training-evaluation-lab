@@ -6,7 +6,8 @@
 
 ## 2. M1 — Experiment model
 
-- [ ] 2.1 Implementar entidades, relaciones, migraciones y estados de design.md (experiment-management); verificar creación de DB vacía y rechazo de transiciones inválidas.
+- [x] 2.1 Implementar entidades, relaciones, migraciones y estados de design.md (experiment-management); verificar creación de DB vacía y rechazo de transiciones inválidas.
+  - Evidencia: GitHub Actions run 36529075377 sobre 2163c57 (2026-09-29): 64 tests, 0 omitidos, incluidos migración sobre DB vacía, deriva modelo↔migración, downgrade/upgrade y todas las transiciones de Experiment/Run/Evaluation contra PostgreSQL 18.6; `compose-smoke` migra una DB vacía.
 - [ ] 2.2 Implementar snapshots/hash/sellado e idempotencia API (experiment-management, reproducibility); verificar mutación denegada y clave repetida/conflictiva.
 - [ ] 2.3 Implementar schemas/manifests de Dataset, Scenario y Benchmark (versioned-benchmarks); verificar refs rotas, duplicados y publicación inmutable.
 
