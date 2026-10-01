@@ -79,6 +79,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter evallab-frontend run format:check
       - run: pnpm --filter evallab-frontend run typecheck
+      - run: pnpm --filter evallab-frontend run test
       - run: pnpm --filter evallab-frontend run build
 
   compose-smoke:

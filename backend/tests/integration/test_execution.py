@@ -384,6 +384,21 @@ def test_model_pattern_without_models_is_not_reported_as_executed(
     assert body["result"]["usage"]["model_calls"] == 0
 
 
+def test_failed_run_trace_is_exposed_as_incomplete(
+    migrated_database: Engine, client: TestClient
+) -> None:
+    """El dashboard (11.2) muestra la traza incompleta tal cual: completeness y run.failed."""
+    with Session(migrated_database) as db, db.begin():
+        faults = [{"fault_id": "x", "tool": "ghost", "call_index": 1, "kind": "transient"}]
+        world = _world(db, faults=faults)
+        execute_run(db, world.run_ids[0])
+    trace = client.get(f"/runs/{world.run_ids[0]}/trace", params={"limit": 1}).json()
+    assert trace["completeness"] == "incomplete"
+    assert trace["page"]["returned"] == 1
+    full = client.get(f"/runs/{world.run_ids[0]}/trace").json()
+    assert full["events"][-1]["type"] == "run.failed"
+
+
 def _run_and_events(
     engine: Engine, client: TestClient, **world: Any
 ) -> tuple[m.Run, list[dict[str, Any]]]:

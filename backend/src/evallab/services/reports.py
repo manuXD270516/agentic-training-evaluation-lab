@@ -130,7 +130,7 @@ def _planned_scenarios(db: Session, benchmark: m.Benchmark) -> list[m.Scenario]:
     return scenarios
 
 
-def collect_cells(db: Session, exp: m.Experiment) -> list[Cell]:
+def collect_cells(db: Session, exp: m.Experiment, mode: str = "live") -> list[Cell]:
     benchmark = db.get(m.Benchmark, (exp.benchmark_id, exp.benchmark_version))
     if benchmark is None:
         raise NotFoundError("benchmark del experimento inexistente")
@@ -142,9 +142,7 @@ def collect_cells(db: Session, exp: m.Experiment) -> list[Cell]:
             .order_by(m.ExperimentAgent.agent_id)
         )
     )
-    runs = list(
-        db.scalars(select(m.Run).where(m.Run.experiment_id == exp.id, m.Run.mode == "live"))
-    )
+    runs = list(db.scalars(select(m.Run).where(m.Run.experiment_id == exp.id, m.Run.mode == mode)))
     by_cell = {
         (r.scenario_id, r.scenario_version, r.agent_id, r.agent_version, r.repetition): r
         for r in runs
@@ -447,19 +445,74 @@ def combine_consumption(agent: Mapping[str, Any], judge: Mapping[str, Any]) -> d
     }
 
 
-def experiment_report(db: Session, experiment_id: uuid.UUID) -> dict[str, Any]:
+def _sealed_experiment(db: Session, experiment_id: uuid.UUID) -> m.Experiment:
     exp = db.get(m.Experiment, experiment_id)
     if exp is None:
         raise NotFoundError("experimento inexistente", experiment_id=str(experiment_id))
     if exp.manifest_hash is None:
         raise ExperimentNotSealedError("el experimento no está sellado", status=exp.status)
+    return exp
+
+
+def _trace_completeness(db: Session, run_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, str | None]:
+    if not run_ids:
+        return {}
+    rows = db.execute(
+        select(m.Trace.run_id, m.Trace.completeness).where(m.Trace.run_id.in_(run_ids))
+    )
+    return {run_id: completeness for run_id, completeness in rows}
+
+
+def experiment_cells(db: Session, experiment_id: uuid.UUID, mode: str = "live") -> dict[str, Any]:
+    """Una fila por celda programada (también las ausentes) para el dashboard (M10, 11.1).
+
+    `task_success` es el status del score o `None` si no hay evaluación completada; la UI lo
+    muestra como unknown sin confundirlo con `not_applicable` ni con `error`.
+    """
+    exp = _sealed_experiment(db, experiment_id)
+    cells = collect_cells(db, exp, mode)
+    traces = _trace_completeness(db, [c.run.id for c in cells if c.run is not None])
+    rows = []
+    for cell in cells:
+        run = cell.run
+        evaluation = cell.evaluation
+        rows.append(
+            {
+                "scenario": {"id": str(cell.scenario_id), "version": cell.scenario_version},
+                "slug": cell.slug,
+                "category": cell.category,
+                "agent": {"id": str(cell.agent_id), "version": cell.agent_version},
+                "repetition": cell.repetition,
+                "seed": cell.seed,
+                "run_id": str(run.id) if run is not None else None,
+                "run_status": run.status if run is not None else "missing",
+                "error_class": run.error_class if run is not None else None,
+                "trace_completeness": traces.get(run.id) if run is not None else None,
+                "evaluation_id": str(evaluation.id) if evaluation is not None else None,
+                "evaluation_status": evaluation.status if evaluation is not None else None,
+                "task_success": _task_status(cell),
+                "raw_outcome_pass": _raw_status(cell),
+                "latency_ms": cell.latency_ms,
+            }
+        )
+    return {
+        "experiment_id": str(exp.id),
+        "manifest_hash": exp.manifest_hash,
+        "mode": mode,
+        "planned_cells": len(rows),
+        "cells": rows,
+    }
+
+
+def experiment_report(db: Session, experiment_id: uuid.UUID, mode: str = "live") -> dict[str, Any]:
+    exp = _sealed_experiment(db, experiment_id)
     benchmark = db.get(m.Benchmark, (exp.benchmark_id, exp.benchmark_version))
     dataset = (
         db.get(m.Dataset, (benchmark.dataset_id, benchmark.dataset_version))
         if benchmark is not None
         else None
     )
-    cells = collect_cells(db, exp)
+    cells = collect_cells(db, exp, mode)
     categories = sorted({c.category for c in cells})
     per_category = Counter(
         c.category for c in {(c.scenario_id, c.category): c for c in cells}.values()
@@ -531,7 +584,7 @@ def experiment_report(db: Session, experiment_id: uuid.UUID) -> dict[str, Any]:
         },
         "labels": {
             "cohort": "pilot" if coverage_class == "pilot" else coverage_class,
-            "mode": "live",
+            "mode": mode,
             "analysis": "descriptive_only" if descriptive_only else "descriptive",
             "statistical_claims": "none",
             "reason": (

@@ -1,7 +1,7 @@
 import uuid
-from typing import Any
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, Query, Request, status
 from fastapi.responses import JSONResponse, Response
 
 from evallab.api.http import IdempotencyHeader, dump, require_key, respond, sessions
@@ -12,6 +12,7 @@ from evallab.schemas import (
     ManifestOut,
     RunCreate,
     RunOut,
+    TraceEventOut,
     TraceOut,
 )
 from evallab.services import execution as execution_svc
@@ -23,6 +24,8 @@ from evallab.services.errors import ExperimentNotSealedError
 from evallab.services.idempotency import run_idempotent
 
 router = APIRouter()
+RunMode = Literal["live", "replay"]
+MAX_TRACE_PAGE = 500
 
 
 @router.post(
@@ -48,6 +51,12 @@ def create_experiment(
             handler=handler,
         )
     return respond(result)
+
+
+@router.get("/experiments")
+def list_experiments(request: Request) -> list[ExperimentOut]:
+    with sessions(request).begin() as db:
+        return [svc.to_out(db, exp) for exp in svc.list_experiments(db)]
 
 
 @router.get("/experiments/{experiment_id}")
@@ -82,10 +91,19 @@ def get_manifest(request: Request, experiment_id: uuid.UUID) -> ManifestOut:
 
 
 @router.get("/experiments/{experiment_id}/report")
-def get_report(request: Request, experiment_id: uuid.UUID) -> dict[str, Any]:
+def get_report(
+    request: Request, experiment_id: uuid.UUID, mode: RunMode = "live"
+) -> dict[str, Any]:
     """Reporte descriptivo: N = celdas programadas, unknown y N/A explícitos, sin inferencia."""
     with sessions(request).begin() as db:
-        return report_svc.experiment_report(db, experiment_id)
+        return report_svc.experiment_report(db, experiment_id, mode)
+
+
+@router.get("/experiments/{experiment_id}/cells")
+def get_cells(request: Request, experiment_id: uuid.UUID, mode: RunMode = "live") -> dict[str, Any]:
+    """Celdas programadas con su run, traza y última evaluación (también las ausentes)."""
+    with sessions(request).begin() as db:
+        return report_svc.experiment_cells(db, experiment_id, mode)
 
 
 @router.post(
@@ -150,10 +168,32 @@ def create_replay(
 
 
 @router.get("/runs/{run_id}/trace")
-def get_run_trace(request: Request, run_id: uuid.UUID) -> TraceOut:
+def get_run_trace(
+    request: Request,
+    run_id: uuid.UUID,
+    after_sequence: Annotated[int | None, Query(ge=0)] = None,
+    limit: Annotated[int | None, Query(ge=1, le=MAX_TRACE_PAGE)] = None,
+) -> TraceOut:
+    """Sin `limit` devuelve la traza entera (compatibilidad); con `limit`, una página keyset."""
     with sessions(request).begin() as db:
-        trace, events = execution_svc.get_trace(db, run_id)
-        return svc.trace_to_out(trace, events)
+        fetch = None if limit is None else limit + 1
+        trace, events = execution_svc.get_trace(
+            db, run_id, after_sequence=after_sequence, limit=fetch
+        )
+        has_more = limit is not None and len(events) > limit
+        return svc.trace_to_out(
+            trace,
+            events[:limit] if limit is not None else events,
+            after_sequence=after_sequence,
+            limit=limit,
+            has_more=has_more,
+        )
+
+
+@router.get("/runs/{run_id}/trace/events/{event_id}")
+def get_trace_event(request: Request, run_id: uuid.UUID, event_id: uuid.UUID) -> TraceEventOut:
+    with sessions(request).begin() as db:
+        return svc.event_to_out(execution_svc.get_trace_event(db, run_id, event_id))
 
 
 @router.get("/runs/{run_id}/trace/manifest")

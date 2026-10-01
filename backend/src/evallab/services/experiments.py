@@ -23,6 +23,7 @@ from evallab.schemas import (
     RunOut,
     TraceEventOut,
     TraceOut,
+    TracePage,
     VersionRef,
 )
 from evallab.services.errors import (
@@ -390,7 +391,41 @@ def list_runs(db: Session, experiment_id: uuid.UUID) -> list[m.Run]:
     )
 
 
-def trace_to_out(trace: m.Trace, events: list[m.TraceEvent]) -> TraceOut:
+def event_to_out(event: m.TraceEvent) -> TraceEventOut:
+    return TraceEventOut(
+        event_id=event.event_id,
+        sequence=event.sequence,
+        timestamp_utc=event.timestamp_utc,
+        elapsed_ms=event.elapsed_ms,
+        type=event.type,
+        actor_role=event.actor_role,
+        parent_event_id=event.parent_event_id,
+        otel_trace_id=event.otel_trace_id,
+        otel_span_id=event.otel_span_id,
+        payload=event.payload if isinstance(event.payload, dict) else {},
+        payload_digest=event.payload_digest,
+        redaction_metadata=(
+            event.redaction_metadata if isinstance(event.redaction_metadata, dict) else {}
+        ),
+    )
+
+
+def trace_to_out(
+    trace: m.Trace,
+    events: list[m.TraceEvent],
+    *,
+    after_sequence: int | None = None,
+    limit: int | None = None,
+    has_more: bool = False,
+) -> TraceOut:
+    page = None
+    if limit is not None:
+        page = TracePage(
+            after_sequence=after_sequence,
+            limit=limit,
+            returned=len(events),
+            next_after_sequence=events[-1].sequence if has_more and events else None,
+        )
     return TraceOut(
         run_id=trace.run_id,
         schema_version=trace.schema_version,
@@ -398,23 +433,12 @@ def trace_to_out(trace: m.Trace, events: list[m.TraceEvent]) -> TraceOut:
         digest=trace.digest,
         completeness=trace.completeness,
         sealed_at=trace.sealed_at,
-        events=[
-            TraceEventOut(
-                event_id=event.event_id,
-                sequence=event.sequence,
-                timestamp_utc=event.timestamp_utc,
-                elapsed_ms=event.elapsed_ms,
-                type=event.type,
-                actor_role=event.actor_role,
-                parent_event_id=event.parent_event_id,
-                otel_trace_id=event.otel_trace_id,
-                otel_span_id=event.otel_span_id,
-                payload=event.payload if isinstance(event.payload, dict) else {},
-                payload_digest=event.payload_digest,
-                redaction_metadata=(
-                    event.redaction_metadata if isinstance(event.redaction_metadata, dict) else {}
-                ),
-            )
-            for event in events
-        ],
+        events=[event_to_out(event) for event in events],
+        page=page,
+    )
+
+
+def list_experiments(db: Session) -> list[m.Experiment]:
+    return list(
+        db.scalars(select(m.Experiment).order_by(m.Experiment.created_at.desc(), m.Experiment.id))
     )

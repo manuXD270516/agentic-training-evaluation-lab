@@ -642,18 +642,37 @@ def execute_run(
     return run
 
 
-def get_trace(db: Session, run_id: uuid.UUID) -> tuple[m.Trace, list[m.TraceEvent]]:
+def get_trace(
+    db: Session,
+    run_id: uuid.UUID,
+    *,
+    after_sequence: int | None = None,
+    limit: int | None = None,
+) -> tuple[m.Trace, list[m.TraceEvent]]:
+    """Eventos ordenados por `sequence`; con `after_sequence`/`limit` devuelve una página
+    (keyset: estable aunque la traza tenga huecos de secuencia por incompleta)."""
     run = db.get(m.Run, run_id)
     if run is None:
         raise NotFoundError("run inexistente", run_id=str(run_id))
     trace = db.scalar(select(m.Trace).where(m.Trace.run_id == run_id))
     if trace is None:
         raise NotFoundError("traza inexistente", run_id=str(run_id))
-    events = list(
-        db.scalars(
-            select(m.TraceEvent)
-            .where(m.TraceEvent.run_id == run_id)
-            .order_by(m.TraceEvent.sequence, m.TraceEvent.event_id)
-        )
+    query = select(m.TraceEvent).where(m.TraceEvent.run_id == run_id)
+    if after_sequence is not None:
+        query = query.where(m.TraceEvent.sequence > after_sequence)
+    query = query.order_by(m.TraceEvent.sequence, m.TraceEvent.event_id)
+    if limit is not None:
+        query = query.limit(limit)
+    return trace, list(db.scalars(query))
+
+
+def get_trace_event(db: Session, run_id: uuid.UUID, event_id: uuid.UUID) -> m.TraceEvent:
+    """Un evento concreto: destino de las referencias de evidencia de un score."""
+    event = db.scalar(
+        select(m.TraceEvent).where(m.TraceEvent.run_id == run_id, m.TraceEvent.event_id == event_id)
     )
-    return trace, events
+    if event is None:
+        raise NotFoundError(
+            "evento inexistente en la traza", run_id=str(run_id), event_id=str(event_id)
+        )
+    return event

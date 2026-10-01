@@ -126,6 +126,15 @@ class TraceEventOut(BaseModel):
     redaction_metadata: JsonObject
 
 
+class TracePage(BaseModel):
+    """Paginación keyset por `sequence`; `next_after_sequence=None` indica la última página."""
+
+    after_sequence: int | None
+    limit: int
+    returned: int
+    next_after_sequence: int | None
+
+
 class TraceOut(BaseModel):
     run_id: uuid.UUID
     schema_version: str
@@ -134,6 +143,7 @@ class TraceOut(BaseModel):
     completeness: str | None
     sealed_at: datetime | None
     events: list[TraceEventOut]
+    page: TracePage | None = None
 
 
 class ScoreOut(BaseModel):

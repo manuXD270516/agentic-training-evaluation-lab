@@ -1,0 +1,179 @@
+:root {
+  --fg: #1d232b;
+  --muted: #5b6673;
+  --bg: #ffffff;
+  --line: #d9dee4;
+  --pass: #1f7a3a;
+  --fail: #b42318;
+  --unknown: #8a5a00;
+  --na: #4b5563;
+  --error: #7a1fa2;
+  --warn-bg: #fff4e0;
+  --hl: #fff8c5;
+  font-family: system-ui, sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #e6e9ee;
+    --muted: #9aa5b1;
+    --bg: #14181d;
+    --line: #2d3540;
+    --pass: #5fd08a;
+    --fail: #ff8a80;
+    --unknown: #f5c26b;
+    --na: #b0b8c2;
+    --error: #d6a2f0;
+    --warn-bg: #3a2c12;
+    --hl: #3b3610;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+}
+
+main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+a {
+  color: inherit;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 8px 0 16px;
+  font-size: 14px;
+}
+
+th,
+td {
+  border-bottom: 1px solid var(--line);
+  padding: 4px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.error,
+.warn {
+  color: var(--fail);
+}
+
+.hash {
+  font-size: 12px;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 16px;
+}
+
+.facts dt {
+  font-weight: 600;
+}
+
+.facts dd {
+  margin: 0;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 16px 0;
+}
+
+.filters a,
+.filters strong {
+  margin-right: 8px;
+}
+
+.badge {
+  display: inline-block;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.badge-pass {
+  color: var(--pass);
+}
+
+.badge-fail {
+  color: var(--fail);
+}
+
+.badge-unknown {
+  color: var(--unknown);
+}
+
+.badge-not_applicable {
+  color: var(--na);
+  border-style: dashed;
+}
+
+.badge-error {
+  color: var(--error);
+  border-style: double;
+  border-width: 3px;
+}
+
+.badge-unevaluated {
+  color: var(--unknown);
+  border-style: dotted;
+}
+
+.legend,
+.counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.row-missing td {
+  color: var(--muted);
+}
+
+.banner-warn {
+  background: var(--warn-bg);
+  border-left: 4px solid var(--unknown);
+  padding: 8px 12px;
+}
+
+.events {
+  padding-left: 40px;
+}
+
+.event pre {
+  margin: 4px 0 12px;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.event.highlight {
+  background: var(--hl);
+  outline: 2px solid var(--unknown);
+}
+
+.evidence {
+  display: inline-block;
+  margin-right: 8px;
+  font-family: monospace;
+  font-size: 12px;
+}

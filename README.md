@@ -13,7 +13,8 @@ Laboratorio para medir éxito, herramientas, argumentos, evidencia, recuperació
 | M7 | Planner/Executor `planner_executor@1.0.0` (plan validado, dependencias, presupuesto global) y [comparación descriptiva pareada](results/m7-react-vs-planner-fixture/comparison.md) con ReAct sobre fixtures (sus diferencias las fija el guion) |
 | M8 | Judge auxiliar sin tools (rúbrica y prompt versionados, abstención, suite de inyección, `scope=judge`, nunca cambia gates) con consumo aparte del agente. **Pendiente:** doble anotación humana del [set de calibración](docs/judge-calibration.md); el judge es `experimental` |
 | M9 | Corpus, chunks, embeddings (`hash-embed@1.0.0`, léxico y determinista) y retriever exacto versionados en PGVector; `agentic-retrieval-v1` (10 escenarios) con recall/MRR@k y citas verificadas contra qrels privados; [ejecución scripted](results/m9-retrieval-scripted/report.md) |
-| M10–M12 | Pendientes: dashboard, protocolo estadístico de comparación, benchmark de 70 casos y demo |
+| M10 | Dashboard React de sólo lectura (`frontend/`): experimentos, task_success por agente y categoría con cobertura y rango de missingness, métricas con una columna por estado (pass, fail, unknown, N/A, error), celdas ausentes visibles, filtros por categoría, agente, estado y modo live/replay, y navegación score → evento de la traza paginada con versiones y trazas incompletas señaladas |
+| M11–M12 | Pendientes: protocolo estadístico de comparación, benchmark de 70 casos y demo |
 
 API disponible (localhost:8000; esquema OpenAPI en `/docs`):
 
@@ -31,10 +32,13 @@ API disponible (localhost:8000; esquema OpenAPI en `/docs`):
 | `GET` / `PATCH /experiments/{id}` | Lee o edita un draft; editar uno sellado devuelve 409 |
 | `POST /experiments/{id}/seal` | Sella con manifest RFC 8785 + SHA-256; exige benchmark y agentes |
 | `GET /experiments/{id}/manifest` | Manifest sellado y su hash |
-| `GET /experiments/{id}/report` | Reporte descriptivo: N = celdas programadas, S/N, cobertura, rango de missingness, métricas micro/macro, consumo y latencia; sin afirmaciones estadísticas |
+| `GET /experiments` | Lista de experimentos (más recientes primero) |
+| `GET /experiments/{id}/report?mode=live\|replay` | Reporte descriptivo del modo pedido (por defecto `live`): N = celdas programadas, S/N, cobertura, rango de missingness, métricas micro/macro, consumo y latencia; sin afirmaciones estadísticas |
+| `GET /experiments/{id}/cells?mode=live\|replay` | Una fila por celda programada, también las que no tienen run: estado del run, completeness de la traza, última evaluación y `task_success` (`null` = sin evaluar) |
 | `POST /experiments/{id}/runs` | Encola una celda (202, `queued`); exige `Idempotency-Key` |
 | `GET /experiments/{id}/runs`, `GET /runs/{id}` | Consulta de celdas; el resultado aparece tras la ejecución |
-| `GET /runs/{id}/trace` | Eventos ordenados, digest y completeness de la traza sellada |
+| `GET /runs/{id}/trace?after_sequence=&limit=` | Eventos ordenados, digest y completeness de la traza sellada; con `limit` (1–500) devuelve una página keyset con `page.next_after_sequence` (`null` en la última) |
+| `GET /runs/{id}/trace/events/{event_id}` | Un evento de la traza: destino de las referencias de evidencia de los scores |
 | `GET /runs/{id}/trace/export`, `GET /runs/{id}/trace/manifest` | Export JSONL completo (redactado) y manifest con digest y SHA-256; verificable con `uv run evallab-verify-trace manifest.json events.jsonl` |
 | `POST /runs/{id}/replays` | Replay offline de un run live con traza completa (202, `mode=replay`); diverge como `replay_mismatch`, nunca cae a live; exige `Idempotency-Key` |
 | `POST /runs/{id}/evaluations` | Evalúa un run terminal con suite y perfil versionados; exige `Idempotency-Key`; cada reevaluación crea una evaluación nueva; `{"judge_model": ...}` añade el judge auxiliar si el escenario declara una dimensión subjetiva |
@@ -66,7 +70,7 @@ backend/                 Python 3.14.7 + uv (paquete `evallab`)
   src/evallab/db/        Modelos SQLAlchemy, migraciones Alembic y `evallab-migrate`
   tests/                 Unitarios; tests/integration/ usa PostgreSQL real
   Dockerfile             Imagen de API, worker y migrate (bases fijadas por digest, no root)
-frontend/                React + Vite + TypeScript; página inicial sin vistas funcionales
+frontend/                Dashboard React + Vite + TypeScript de sólo lectura (proxy /api -> API local)
 compose.yaml             PostgreSQL 18.6 con pgvector, migrate (una vez), API, worker y collector OTel opcional
 otel/collector.yaml      Configuración del collector opcional (sólo log de spans)
 .env.example             Configuración de ejemplo sin credenciales
@@ -99,6 +103,8 @@ uv run --locked --env-file ../.env evallab-api
 pnpm install --frozen-lockfile; pnpm --filter evallab-frontend run dev   # http://127.0.0.1:5173
 ```
 
+El dashboard (`http://127.0.0.1:5173`) lee la API a través del proxy `/api` de Vite; `EVALLAB_API_URL` cambia el destino (por defecto `http://127.0.0.1:8000`). Para tener datos, `uv run --locked --env-file ../.env evallab-benchmark run pilot --repetitions 1 --out <carpeta>` crea, ejecuta y evalúa un experimento del piloto.
+
 ## Checks (idénticos a CI)
 
 ```powershell
@@ -106,6 +112,7 @@ pnpm install --frozen-lockfile
 pnpm run spec:validate
 pnpm --filter evallab-frontend run format:check
 pnpm --filter evallab-frontend run typecheck
+pnpm --filter evallab-frontend run test
 pnpm --filter evallab-frontend run build
 cd backend
 uv sync --locked
