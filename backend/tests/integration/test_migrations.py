@@ -36,6 +36,11 @@ IMMUTABLE_TABLES = (
     "agent_tools",
     "fixtures",
     "price_snapshots",
+    "corpora",
+    "corpus_chunks",
+    "embedding_sets",
+    "chunk_embeddings",
+    "retrievers",
 )
 
 FUNCTIONS = (

@@ -199,6 +199,10 @@ def run_observations(report: EvaluationReport) -> list[ScoreObservation]:
                 evidence_refs=policy.evidence_refs,
             )
         )
+    if report.retrieval_truth is not None and report.context is not None:
+        from evallab.evaluation.retrieval import retrieval_observations
+
+        observations.extend(retrieval_observations(report.context, report.retrieval_truth))
     return observations
 
 

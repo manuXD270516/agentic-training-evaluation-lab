@@ -28,7 +28,9 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy.dialects.postgresql.base import ischema_names
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.types import UserDefinedType
 
 from evallab.domain import vocabulary as vocab
 from evallab.domain.lifecycle import EVALUATION_LIFECYCLE, EXPERIMENT_LIFECYCLE, RUN_LIFECYCLE
@@ -358,6 +360,109 @@ class AgentTool(Base):
     agent_version: Mapped[str] = mapped_column(Text, primary_key=True)
     tool_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
     tool_version: Mapped[str] = mapped_column(Text)
+
+
+# --- Retrieval versionado (M9, 10.1) ---------------------------------------------------------
+
+
+class Vector(UserDefinedType[list[float]]):
+    """Columna `vector` de pgvector sin dimensión fija (la fija cada EmbeddingSet)."""
+
+    cache_ok = True
+
+    def get_col_spec(self, **kw: Any) -> str:
+        return "vector"
+
+
+# La reflexión de PostgreSQL (Alembic) reconoce así el tipo de pgvector.
+ischema_names["vector"] = Vector
+
+
+class Corpus(Base):
+    """Corpus sintético publicado: documentos, chunking y hash de contenido."""
+
+    __tablename__ = "corpora"
+    __table_args__ = (
+        CheckConstraint(sha256("content_hash"), name="content_hash_sha256"),
+        CheckConstraint(semver(), name="version_semver"),
+        CheckConstraint("synthetic IS TRUE", name="synthetic"),
+        UniqueConstraint("corpus_id", "version"),
+    )
+
+    content_hash: Mapped[str] = mapped_column(Text, primary_key=True)
+    corpus_id: Mapped[str] = mapped_column(Text)
+    version: Mapped[str] = mapped_column(Text)
+    synthetic: Mapped[bool] = mapped_column(Boolean)
+    license: Mapped[str] = mapped_column(Text)
+    chunking: Mapped[Any] = jsonb()
+    manifest: Mapped[Any] = jsonb()
+    created_at: Mapped[datetime] = created_at()
+
+
+class CorpusChunk(Base):
+    __tablename__ = "corpus_chunks"
+    __table_args__ = (
+        CheckConstraint(sha256("text_sha256"), name="text_sha256"),
+        CheckConstraint("position >= 1", name="position_positive"),
+    )
+
+    corpus_hash: Mapped[str] = mapped_column(
+        Text, ForeignKey("corpora.content_hash"), primary_key=True
+    )
+    chunk_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    doc_id: Mapped[str] = mapped_column(Text)
+    position: Mapped[int] = mapped_column(Integer)
+    text: Mapped[str] = mapped_column(Text)
+    text_sha256: Mapped[str] = mapped_column(Text)
+
+
+class EmbeddingSet(Base):
+    __tablename__ = "embedding_sets"
+    __table_args__ = (
+        CheckConstraint(sha256("content_hash"), name="content_hash_sha256"),
+        CheckConstraint(sha256("embeddings_sha256"), name="embeddings_sha256"),
+        CheckConstraint("dimension > 0", name="dimension_positive"),
+    )
+
+    content_hash: Mapped[str] = mapped_column(Text, primary_key=True)
+    corpus_hash: Mapped[str] = mapped_column(Text, ForeignKey("corpora.content_hash"))
+    embedder: Mapped[str] = mapped_column(Text)
+    embedder_version: Mapped[str] = mapped_column(Text)
+    dimension: Mapped[int] = mapped_column(Integer)
+    embeddings_sha256: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at()
+
+
+class ChunkEmbedding(Base):
+    __tablename__ = "chunk_embeddings"
+    __table_args__ = (CheckConstraint("vector_dims(embedding) > 0", name="embedding_not_empty"),)
+
+    embedding_set: Mapped[str] = mapped_column(
+        Text, ForeignKey("embedding_sets.content_hash"), primary_key=True
+    )
+    chunk_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    embedding: Mapped[list[float]] = mapped_column(Vector())
+
+
+class RetrieverConfig(Base):
+    """Configuración de recuperación: búsqueda exacta, distancia, precisión y desempate."""
+
+    __tablename__ = "retrievers"
+    __table_args__ = (
+        CheckConstraint(sha256("content_hash"), name="content_hash_sha256"),
+        CheckConstraint(one_of("distance", ("cosine",)), name="distance"),
+        CheckConstraint(one_of("index_kind", ("exact",)), name="index_kind"),
+        CheckConstraint("top_k > 0", name="top_k_positive"),
+    )
+
+    content_hash: Mapped[str] = mapped_column(Text, primary_key=True)
+    embedding_set: Mapped[str] = mapped_column(Text, ForeignKey("embedding_sets.content_hash"))
+    distance: Mapped[str] = mapped_column(Text)
+    index_kind: Mapped[str] = mapped_column(Text)
+    tie_break: Mapped[str] = mapped_column(Text)
+    score_decimals: Mapped[int] = mapped_column(Integer)
+    top_k: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = created_at()
 
 
 # --- Ejecución y evaluación ---------------------------------------------------------------

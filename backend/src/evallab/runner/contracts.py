@@ -105,6 +105,8 @@ class ToolOutcome:
     fault_id: str | None = None
     timeout_ms: int | None = None
     idempotent_replay: bool = False
+    # Evidencia de recuperación (M9): consulta, refs versionadas y ranking real devuelto.
+    retrieval: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)

@@ -37,6 +37,8 @@ RATIO_METRICS = (
     "evidence_coverage",
     "policy_violation_rate",
 )
+# Del perfil `retrieval-metrics@1.0.0`: sólo existen en escenarios con retriever versionado.
+RETRIEVAL_METRICS = ("retrieval_recall_at_k", "retrieval_mrr_at_k")
 USAGE_KEYS = ("steps", "tool_calls", "model_calls", "retries")
 DESCRIPTIVE_MIN_SCENARIOS_PER_CATEGORY = 5
 
@@ -201,14 +203,19 @@ def _metric_summary(cells: Sequence[Cell], metric: str) -> dict[str, Any]:
     for cell in cells:
         score = cell.scores.get(metric)
         if score is None:
-            statuses["unknown"] += 1
+            # Sin evaluación es unknown; evaluada sin esa métrica (perfil no aplicable), N/A.
+            evaluated = cell.evaluation is not None and cell.evaluation.status == "completed"
+            statuses["not_applicable" if evaluated else "unknown"] += 1
             continue
         statuses[score.status] += 1
-        if score.status in ("pass", "fail") and score.denominator:
+        if score.status not in ("pass", "fail"):
+            continue
+        if score.denominator:
             numerator += int(score.numerator or 0)
             denominator += int(score.denominator)
-            if score.value is not None:
-                values.append(score.value)
+        # Las métricas sin razón (p. ej. MRR) sólo tienen media por run (macro).
+        if score.value is not None:
+            values.append(score.value)
     return {
         "statuses": {s: statuses.get(s, 0) for s in STATUSES},
         "micro": {
@@ -473,7 +480,8 @@ def experiment_report(db: Session, experiment_id: uuid.UUID) -> dict[str, Any]:
                 "summary": _summaries(agent_cells),
                 "by_category": {cat: _summaries(by_category[cat]) for cat in categories},
                 "metrics": {
-                    metric: _metric_summary(agent_cells, metric) for metric in RATIO_METRICS
+                    metric: _metric_summary(agent_cells, metric)
+                    for metric in (*RATIO_METRICS, *RETRIEVAL_METRICS)
                 },
                 "usage": usage,
                 # El judge se informa aparte (scope judge) y sólo se suma en `total_consumption`.

@@ -18,6 +18,13 @@ from evallab.domain.lifecycle import EVALUATION_LIFECYCLE, EvaluationStatus, Run
 from evallab.evaluation.engine import SUITE_HASH, SUITE_VERSION, EvaluationInput, evaluate
 from evallab.evaluation.judge import JUDGE_ROLE, Rubric, rubric_for, run_judge, suite_document
 from evallab.evaluation.metrics import PROFILE_HASH, PROFILE_VERSION, run_observations
+from evallab.evaluation.retrieval import PROFILE_HASH as RETRIEVAL_PROFILE_HASH
+from evallab.evaluation.retrieval import PROFILE_ID as RETRIEVAL_PROFILE_ID
+from evallab.evaluation.retrieval import PROFILE_VERSION as RETRIEVAL_PROFILE_VERSION
+from evallab.evaluation.retrieval import SUITE_HASH as RETRIEVAL_SUITE_HASH
+from evallab.evaluation.retrieval import SUITE_ID as RETRIEVAL_SUITE_ID
+from evallab.evaluation.retrieval import SUITE_VERSION as RETRIEVAL_SUITE_VERSION
+from evallab.evaluation.retrieval import RetrievalTruth
 from evallab.runner.models import ModelSnapshot
 from evallab.schemas import EvaluationOut, ScoreOut, VersionRef
 from evallab.services.errors import DomainError, InvalidReferenceError, NotFoundError
@@ -74,8 +81,26 @@ def evaluate_run(
 class _JudgeSetup:
     model: ModelSnapshot
     rubric: Rubric | None
-    suite_hash: str
-    suite_version: str
+
+
+def _suite_identity(retrieval: bool, judge: _JudgeSetup | None) -> tuple[str, str, str, str]:
+    """Hash y versión de la suite y del perfil efectivos: la determinística sola conserva sus
+    identificadores; cada extensión (retrieval, judge) produce una combinación propia."""
+    parts: dict[str, Any] = {"deterministic": SUITE_HASH}
+    version = SUITE_VERSION
+    if retrieval:
+        parts["retrieval"] = RETRIEVAL_SUITE_HASH
+        version += f"+{RETRIEVAL_SUITE_ID}@{RETRIEVAL_SUITE_VERSION}"
+    if judge is not None and judge.rubric is not None:
+        parts["judge"] = suite_document(judge.rubric, judge.model.content_hash)
+        version += f"+judge.{judge.rubric.ref}"
+    suite_hash = SUITE_HASH if len(parts) == 1 else canonical_digest(parts)
+    if retrieval:
+        profile_hash = canonical_digest({"core": PROFILE_HASH, "retrieval": RETRIEVAL_PROFILE_HASH})
+        profile_version = f"{PROFILE_VERSION}+{RETRIEVAL_PROFILE_ID}@{RETRIEVAL_PROFILE_VERSION}"
+    else:
+        profile_hash, profile_version = PROFILE_HASH, PROFILE_VERSION
+    return suite_hash, version, profile_hash, profile_version
 
 
 def _judge_setup(
@@ -93,12 +118,7 @@ def _judge_setup(
         (scenario.evaluation or {}).get("judge") if isinstance(scenario.evaluation, dict) else None
     )
     rubric = rubric_for(str(spec.get("rubric_ref"))) if isinstance(spec, dict) else None
-    if rubric is None:
-        return _JudgeSetup(model, None, SUITE_HASH, SUITE_VERSION)
-    suite = {"deterministic": SUITE_HASH, "judge": suite_document(rubric, model.content_hash)}
-    return _JudgeSetup(
-        model, rubric, canonical_digest(suite), f"{SUITE_VERSION}+judge.{rubric.ref}"
-    )
+    return _JudgeSetup(model, rubric)
 
 
 def _judge_document(
@@ -155,6 +175,10 @@ def _evaluate_run(
     if scenario is None:
         raise RunNotEvaluableError("escenario irresoluble")
     judge = _judge_setup(db, scenario, judge_model)
+    retrieval_spec = scenario.retrieval if isinstance(scenario.retrieval, dict) else None
+    suite_hash, suite_version, profile_hash, profile_version = _suite_identity(
+        RetrievalTruth.from_spec(retrieval_spec) is not None, judge
+    )
     parent = db.scalar(
         select(m.Evaluation)
         .where(m.Evaluation.run_id == run_id)
@@ -165,10 +189,10 @@ def _evaluate_run(
         id=uuid.uuid4(),
         run_id=run.id,
         trace_digest=trace.digest,
-        evaluator_suite_hash=judge.suite_hash if judge is not None else SUITE_HASH,
-        evaluator_suite_version=judge.suite_version if judge is not None else SUITE_VERSION,
-        metric_profile_version=PROFILE_VERSION,
-        metric_profile_hash=PROFILE_HASH,
+        evaluator_suite_hash=suite_hash,
+        evaluator_suite_version=suite_version,
+        metric_profile_version=profile_version,
+        metric_profile_hash=profile_hash,
         parent_evaluation_id=parent.id if parent is not None else None,
         status=EvaluationStatus.PENDING,
     )
@@ -193,6 +217,7 @@ def _evaluate_run(
                 run_result=run.result if isinstance(run.result, dict) else None,
                 events=_event_dicts(events),
                 completeness=trace.completeness,
+                retrieval=retrieval_spec,
             )
         )
         observations = run_observations(report)
@@ -219,7 +244,7 @@ def _evaluate_run(
         )
     document = {
         **report.as_json(),
-        "metric_profile": {"version": PROFILE_VERSION, "hash": PROFILE_HASH},
+        "metric_profile": {"version": profile_version, "hash": profile_hash},
     }
     if judge is not None:
         judge_document, judge_score = _judge_document(db, judge, scenario, run, document)

@@ -598,6 +598,14 @@ class _Run:
             event_id=event_id,
         )
         self.evidence.append(EvidenceRef(event_id=event_id, pointer="/result"))
+        if outcome.retrieval is not None:
+            # Ranking real devuelto (orden y scores) para recall/MRR y auditoría del retriever.
+            self.sink.append(
+                "retrieval.completed",
+                "executor",
+                {"call_id": str(call_id), "query_id": str(call_id), **outcome.retrieval},
+                parent_event_id=parent,
+            )
 
 
 def execute_agent(

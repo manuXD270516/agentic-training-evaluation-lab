@@ -12,7 +12,8 @@ Laboratorio para medir éxito, herramientas, argumentos, evidencia, recuperació
 | M6 | Gateway de modelo neutral (uso, coste por price snapshot, errores tipados) y ReAct `react@1.0.0` con replay de modelo, verificados con modelos de fixture. **Pendiente:** elegir proveedor, modelo y presupuesto live (decisión y gasto del responsable); el adaptador live existe desactivado |
 | M7 | Planner/Executor `planner_executor@1.0.0` (plan validado, dependencias, presupuesto global) y [comparación descriptiva pareada](results/m7-react-vs-planner-fixture/comparison.md) con ReAct sobre fixtures (sus diferencias las fija el guion) |
 | M8 | Judge auxiliar sin tools (rúbrica y prompt versionados, abstención, suite de inyección, `scope=judge`, nunca cambia gates) con consumo aparte del agente. **Pendiente:** doble anotación humana del [set de calibración](docs/judge-calibration.md); el judge es `experimental` |
-| M9–M12 | Pendientes: retrieval con PGVector, dashboard, protocolo estadístico de comparación, benchmark de 70 casos y demo |
+| M9 | Corpus, chunks, embeddings (`hash-embed@1.0.0`, léxico y determinista) y retriever exacto versionados en PGVector; `agentic-retrieval-v1` (10 escenarios) con recall/MRR@k y citas verificadas contra qrels privados; [ejecución scripted](results/m9-retrieval-scripted/report.md) |
+| M10–M12 | Pendientes: dashboard, protocolo estadístico de comparación, benchmark de 70 casos y demo |
 
 API disponible (localhost:8000; esquema OpenAPI en `/docs`):
 
@@ -58,13 +59,15 @@ backend/                 Python 3.14.7 + uv (paquete `evallab`)
   src/evallab/worker/    Worker: heartbeat, claim con lease + fencing token, /health
   src/evallab/runner/    Contratos, límites, sink en memoria, patrón scripted y gateway de tools
   src/evallab/benchmarks/ Suites sintéticas declarativas, lock de hashes y CLI evallab-benchmark
+  src/evallab/retrieval/  Chunking, embedding hash-embed y retriever exacto sobre PGVector
+  src/evallab/evaluation/ Suites determinística, retrieval y judge; métricas y calibración
   src/evallab/settings.py  Configuración por entorno y SandboxPolicy (red denegada)
   src/evallab/domain/    Máquinas de estados y vocabularios cerrados del design
   src/evallab/db/        Modelos SQLAlchemy, migraciones Alembic y `evallab-migrate`
   tests/                 Unitarios; tests/integration/ usa PostgreSQL real
   Dockerfile             Imagen de API, worker y migrate (bases fijadas por digest, no root)
 frontend/                React + Vite + TypeScript; página inicial sin vistas funcionales
-compose.yaml             PostgreSQL 18.6, migrate (una vez), API, worker y collector OTel opcional (perfil otel)
+compose.yaml             PostgreSQL 18.6 con pgvector, migrate (una vez), API, worker y collector OTel opcional
 otel/collector.yaml      Configuración del collector opcional (sólo log de spans)
 .env.example             Configuración de ejemplo sin credenciales
 .github/workflows/ci.yml CI: OpenSpec, backend, frontend y smoke de Compose

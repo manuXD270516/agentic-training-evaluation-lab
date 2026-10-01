@@ -29,6 +29,7 @@ from evallab.domain.lifecycle import (
     RunStatus,
 )
 from evallab.domain.vocabulary import TRACE_SCHEMA_VERSION
+from evallab.retrieval.store import PgVectorRetriever
 from evallab.runner.agent import execute_agent
 from evallab.runner.contracts import (
     AgentSnapshot,
@@ -223,6 +224,8 @@ def _tool_gateway(
         agent_only={t.name for t in in_agent if (t.id, t.version) not in scenario_keys},
         initial_state=initial_state if isinstance(initial_state, dict) else {},
         faults=faults,
+        # Lectura en PGVector para tools de recuperación; la ejecución sigue sin escribir.
+        retrieval=PgVectorRetriever(db),
     )
 
 

@@ -25,7 +25,7 @@ x-db-env: &db-env
 
 services:
   db:
-    image: postgres:18.6-trixie@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
+    image: pgvector/pgvector:0.8.6-pg18-trixie@sha256:78bf48b801e792f99e3ac62b5036fd3876e9be48afda16c1e331af1c75ceb2ff
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-evallab}
       POSTGRES_USER: ${POSTGRES_USER:-evallab}

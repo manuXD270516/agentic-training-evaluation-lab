@@ -8,7 +8,7 @@ import uuid
 from collections import Counter
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
@@ -86,6 +86,17 @@ class ToolFixture(StrictModel):
         return self
 
 
+class RetrieverFixture(StrictModel):
+    """Tool de recuperación sobre un retriever versionado (M9): `{query}` → chunks rankeados."""
+
+    kind: Literal["retriever"]
+    retriever_ref: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class RetrievalBackend(Protocol):
+    def search(self, retriever_hash: str, query: str) -> tuple[Any, Sequence[Any]]: ...
+
+
 @dataclass(frozen=True)
 class ToolBinding:
     tool: AllowedTool
@@ -127,6 +138,7 @@ class FixtureToolGateway:
         agent_only: Iterable[str] = (),
         initial_state: dict[str, Any] | None = None,
         faults: Sequence[FaultSpec] = (),
+        retrieval: RetrievalBackend | None = None,
     ) -> None:
         names = Counter(binding.tool.name for binding in allowed)
         self._ambiguous = {name for name, count in names.items() if count > 1}
@@ -137,10 +149,11 @@ class FixtureToolGateway:
         self._agent_only = set(agent_only)
         self._state: dict[str, Any] = copy.deepcopy(initial_state or {})
         self._validators: dict[str, Draft202012Validator] = {}
-        self._fixtures: dict[str, ToolFixture] = {}
+        self._fixtures: dict[str, ToolFixture | RetrieverFixture] = {}
         self._faults = {(f.tool, f.call_index): f for f in faults}
         self._executions: Counter[str] = Counter()
         self._applied: dict[uuid.UUID, Any] = {}
+        self._retrieval = retrieval
 
     def allowed_tools(self) -> Sequence[AllowedTool]:
         return tuple(
@@ -184,13 +197,64 @@ class FixtureToolGateway:
             for error in errors
         ]
 
-    def _fixture(self, binding: ToolBinding) -> ToolFixture:
+    def _fixture(self, binding: ToolBinding) -> ToolFixture | RetrieverFixture:
         name = binding.tool.name
         parsed = self._fixtures.get(name)
         if parsed is None:
-            parsed = ToolFixture.model_validate(binding.fixture)
+            raw = binding.fixture
+            if isinstance(raw, dict) and raw.get("kind") == "retriever":
+                parsed = RetrieverFixture.model_validate(raw)
+            else:
+                parsed = ToolFixture.model_validate(raw)
             self._fixtures[name] = parsed
         return parsed
+
+    def _retrieve(
+        self, binding: ToolBinding, fixture: RetrieverFixture, arguments: dict[str, Any]
+    ) -> ToolOutcome:
+        query = arguments.get("query")
+        if self._retrieval is None or not isinstance(query, str):
+            return _failed("recuperación no disponible", validated=True, reason="no_retriever")
+        try:
+            config, ranked = self._retrieval.search(fixture.retriever_ref, query)
+        except LookupError:
+            return _failed("retriever inexistente", validated=True, reason="retriever_missing")
+        result = {
+            "results": [
+                {"chunk_id": r.chunk_id, "doc_id": r.doc_id, "text": r.text, "score": r.score}
+                for r in ranked
+            ]
+        }
+        try:
+            output_errors = self._schema_errors(
+                f"{binding.tool.name}:output", binding.output_schema, result
+            )
+        except SchemaError:
+            return _failed("output_schema inválido", validated=True, reason="invalid_output_schema")
+        if output_errors:
+            return _failed(
+                "el resultado no cumple output_schema",
+                validated=True,
+                reason="output_schema_invalid",
+            )
+        self._executions[binding.tool.name] += 1
+        return ToolOutcome(
+            kind="completed",
+            validated=True,
+            result=result,
+            state_digest=self.state_digest(),
+            retrieval={
+                "query": query,
+                "retriever_ref": fixture.retriever_ref,
+                "embedding_set_ref": config.embedding_set,
+                "distance": config.distance,
+                "index_kind": config.index_kind,
+                "tie_break": config.tie_break,
+                "top_k": config.top_k,
+                "ranked_chunk_ids": [r.chunk_id for r in ranked],
+                "scores": [r.score for r in ranked],
+            },
+        )
 
     def invoke(self, name: str, call_id: uuid.UUID, arguments: dict[str, Any]) -> ToolOutcome:
         binding = self._bindings.get(name)
@@ -223,6 +287,8 @@ class FixtureToolGateway:
             fixture = self._fixture(binding)
         except ValidationError:
             return _failed("fixture de tool inválida", validated=True, reason="fixture_invalid")
+        if isinstance(fixture, RetrieverFixture):
+            return self._retrieve(binding, fixture, arguments)
 
         key = canonical_json(arguments)
         case: FixtureCase | FixtureDefault | None = next(

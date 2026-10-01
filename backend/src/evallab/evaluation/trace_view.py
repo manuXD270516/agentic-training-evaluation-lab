@@ -35,6 +35,8 @@ class TraceView:
     violations: tuple[Mapping[str, Any], ...]
     event_types: Mapping[str, str] = field(default_factory=dict)
     completed_calls: Mapping[str, ToolCallView] = field(default_factory=dict)
+    # Eventos `retrieval.completed` en orden: ranking real devuelto por el retriever.
+    retrievals: tuple[Mapping[str, Any], ...] = ()
 
     @classmethod
     def build(cls, events: Iterable[Mapping[str, Any]], completeness: str) -> TraceView:
@@ -42,6 +44,7 @@ class TraceView:
         requests: dict[str, dict[str, Any]] = {}
         order: list[str] = []
         violations: list[Mapping[str, Any]] = []
+        retrievals: list[Mapping[str, Any]] = []
         types: dict[str, str] = {}
         for event in ordered:
             event_id = str(event["event_id"])
@@ -60,6 +63,8 @@ class TraceView:
                 order.append(call_id)
             elif kind == "policy.violation":
                 violations.append({"event_id": event_id, **payload})
+            elif kind == "retrieval.completed":
+                retrievals.append({"event_id": event_id, **payload})
             elif call_id in requests:
                 call = requests[call_id]
                 if kind == "tool.denied":
@@ -92,6 +97,7 @@ class TraceView:
             violations=tuple(violations),
             event_types=types,
             completed_calls=completed,
+            retrievals=tuple(retrievals),
         )
 
     @property

@@ -1,0 +1,44 @@
+{
+  "agents": {
+    "retrieval-scripted-faulty": "bc2d03961a4a06444ea97cd3d9e2b7abf752b95fdecf608feac3d96bf1caaa2a",
+    "retrieval-scripted-reference": "d9e22574028bba011f3644317d8ce748349a65e106aead5a075b1a5bea1b84c3"
+  },
+  "benchmark": {
+    "content_hash": "639d3116078e36a7d6df9b35416186bda6b029cb91af0d4d36a0520486eaed53",
+    "id": "a7be6fc8-8e6a-5be1-9c76-52961152b701",
+    "version": "1.0.0"
+  },
+  "dataset": {
+    "content_hash": "c6daf14f8716f03dc999d082ef6b9c3208a47833463b31b973ebfeee4b84c55c",
+    "coverage_class": "incomplete",
+    "id": "875db123-4c7e-5136-b194-883a23b592f0",
+    "version": "1.0.0"
+  },
+  "fixtures": {
+    "tool:email-send": "1960487240c1b4fef299cf29a88544b710d9dd6eeb04477fe2ba08b2707d4da7",
+    "tool:kb-retrieve": "4afec0e08b50e6b7f307211b43626c1d633c5bf0c13c21fa8507bedb45025d33"
+  },
+  "scenarios": {
+    "rt-v1-battery-life-unanswerable": "ae4121969f3722dabcdd677038b4744e483fbadad4960cd005fa5b52c1c6b650",
+    "rt-v1-ceo-unanswerable": "02bfd7c76b8b35d9b3d8ece65bd926db083eb29501e5915ae113dbf27e63f02d",
+    "rt-v1-current-returns": "b5ac550c9eb2cdc927572c8d1a1e9ac8dffffa9c91f0ba5ac4f4371afef5524f",
+    "rt-v1-data-retention": "0c8e7b51a5057f66b2e1b977284d75059b85d9ee01f1370a88171a62d8456bc2",
+    "rt-v1-islands-shipping": "68dfeeaa53931e95c5241ce4b9fe843dca02c356cce78f3b9fb0a8c1fd7f4bc8",
+    "rt-v1-payment-methods": "7e40a8182f717812e0bb4d53e34df4b22fa8ec97838b225440efa10c773b2428",
+    "rt-v1-shipping-cost": "b73256b0d4499717cd440e38532cf834c8531176957b75d6e4d0f25653f22083",
+    "rt-v1-size-exchange": "1a65a261c7f3921dc9b55d7f18203080f1f6b64ab7ceb576881adb01214e6274",
+    "rt-v1-support-hours-injection": "6949d7f5bafe85e864f55a00dacef024fcc780c3fe74b7727ae13e497e23ad6c",
+    "rt-v1-warranty-electronics": "cad4e847fd93351cac4003ec94ece4b9ccb7ac76460e1e1ac73ea95dac5d1ef0"
+  },
+  "tools": {
+    "email-send": "7a32435689b999871f5c02247e87dbc91ce19661aaaf57ef3b4429f87f7cd072",
+    "kb-retrieve": "4b533ed85c8c81f5744bf9fc8cba6f745f20c3d12fc2dd0ff067d7aeabed4a8a"
+  },
+  "vector_corpora": {
+    "acme-support-kb": {
+      "corpus_ref": "6a8dabe933129288555382f2417a2d8d60116dee079f084dfc355dab102a060f",
+      "embedding_set_ref": "bdb1c6c50eaf88ebd6184d1a7e6a9e404ee9c3e625091b818dc5a3c409d41d07",
+      "retriever_ref": "e23765f53bac970618518d9d87e85ef7aced6fcf1955dbedc09d4423c68497d1"
+    }
+  }
+}

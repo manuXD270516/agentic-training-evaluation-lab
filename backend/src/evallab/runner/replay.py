@@ -7,6 +7,7 @@ proveedores: no existe camino de fallback a live.
 
 from __future__ import annotations
 
+import dataclasses
 import uuid
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -141,6 +142,17 @@ class Recording:
                 )
                 continue
             recorded = calls.get(call_id)
+            if kind == "retrieval.completed" and recorded is not None and recorded.outcomes:
+                # El ranking grabado acompaña al resultado para reemitir retrieval.completed.
+                ranking = {
+                    key: value
+                    for key, value in payload.items()
+                    if key not in ("call_id", "query_id")
+                }
+                recorded.outcomes[-1] = dataclasses.replace(
+                    recorded.outcomes[-1], retrieval=ranking
+                )
+                continue
             outcome = _outcome(kind, payload)
             if recorded is None or outcome is None:
                 continue

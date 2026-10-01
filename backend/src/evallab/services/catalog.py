@@ -237,6 +237,45 @@ def _validate_oracle(data: ScenarioCreate, tools: list[m.ToolDefinition]) -> Non
             raise InvalidRequestError("abstention_required exige retrieval.unanswerable")
     if data.primary_category == "retrieval" and data.retrieval is None:
         raise InvalidRequestError("un escenario retrieval exige el bloque retrieval")
+    uses_citations = any(c.operator == "citation_supported" for c in data.expected.checks)
+    if uses_citations and (data.retrieval is None or data.retrieval.retriever_ref is None):
+        raise InvalidRequestError("citation_supported exige un retriever versionado")
+
+
+def _validate_retrieval(db: Session, data: ScenarioCreate) -> None:
+    """Refs de retrieval resolubles y coherentes: corpus → embeddings → retriever y qrels."""
+    spec = data.retrieval
+    if spec is None:
+        return
+    corpus = db.get(m.Corpus, spec.corpus_ref)
+    if corpus is None and db.get(m.Fixture, spec.corpus_ref) is None:
+        raise InvalidReferenceError("corpus inexistente", corpus_ref=spec.corpus_ref)
+    if spec.retriever_ref is None:
+        return
+    retriever = db.get(m.RetrieverConfig, spec.retriever_ref)
+    if retriever is None or corpus is None:
+        raise InvalidReferenceError("retriever o corpus versionado inexistente")
+    embedding_set = db.get(m.EmbeddingSet, retriever.embedding_set)
+    if embedding_set is None or embedding_set.corpus_hash != corpus.content_hash:
+        raise InvalidReferenceError("el retriever no pertenece al corpus declarado")
+    if spec.embedding_set_ref is not None and spec.embedding_set_ref != embedding_set.content_hash:
+        raise InvalidReferenceError("embedding_set_ref no coincide con el del retriever")
+    if spec.top_k != retriever.top_k:
+        raise InvalidRequestError("top_k distinto del fijado por el retriever")
+    relevant = spec.qrels.get("relevant") if spec.qrels else None
+    if not spec.unanswerable:
+        if not isinstance(relevant, list) or not relevant:
+            raise InvalidRequestError("qrels de un retriever versionado exige `relevant`")
+        known = set(
+            db.scalars(
+                select(m.CorpusChunk.chunk_id).where(
+                    m.CorpusChunk.corpus_hash == corpus.content_hash
+                )
+            )
+        )
+        missing = [c for c in relevant if c not in known]
+        if missing:
+            raise InvalidReferenceError("qrels con chunks inexistentes", chunks=missing)
 
 
 def scenario_document(data: ScenarioCreate, scenario_id: uuid.UUID) -> dict[str, Any]:
@@ -268,6 +307,7 @@ def publish_scenario(db: Session, data: ScenarioCreate) -> m.Scenario:
     tools = _resolve_tools(db, data.tools)
     _resolve_fixtures(db, data.environment.fixture_refs)
     _validate_oracle(data, tools)
+    _validate_retrieval(db, data)
     scenario_id = data.id or uuid.uuid4()
     document = scenario_document(data, scenario_id)
     content_hash = _digest(document)

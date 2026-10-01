@@ -21,6 +21,20 @@ from evallab.evaluation.checks import (
     CheckStatus,
     Dimension,
 )
+from evallab.evaluation.retrieval import (
+    SUITE_HASH as RETRIEVAL_SUITE_HASH,
+)
+from evallab.evaluation.retrieval import (
+    SUITE_ID as RETRIEVAL_SUITE_ID,
+)
+from evallab.evaluation.retrieval import (
+    SUITE_VERSION as RETRIEVAL_SUITE_VERSION,
+)
+from evallab.evaluation.retrieval import (
+    RetrievalTruth,
+    citation_supported,
+    relevant_in_top_k,
+)
 from evallab.evaluation.trace_view import TraceView
 
 SUITE_ID = "deterministic-core"
@@ -55,6 +69,8 @@ class EvaluationInput:
     run_result: Mapping[str, Any] | None
     events: Sequence[Mapping[str, Any]]
     completeness: str
+    # Bloque `retrieval` privado del escenario; con `retriever_ref` activa retrieval-core.
+    retrieval: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -66,10 +82,21 @@ class EvaluationReport:
     task_success: CheckStatus
     task_success_reasons: tuple[str, ...]
     trace: TraceView
+    retrieval_truth: RetrievalTruth | None = None
+    context: CheckContext | None = None
 
     def as_json(self) -> dict[str, Any]:
+        suite: dict[str, Any] = {"id": SUITE_ID, "version": SUITE_VERSION, "hash": SUITE_HASH}
+        if self.retrieval_truth is not None:
+            suite["extensions"] = [
+                {
+                    "id": RETRIEVAL_SUITE_ID,
+                    "version": RETRIEVAL_SUITE_VERSION,
+                    "hash": RETRIEVAL_SUITE_HASH,
+                }
+            ]
         return {
-            "suite": {"id": SUITE_ID, "version": SUITE_VERSION, "hash": SUITE_HASH},
+            "suite": suite,
             "run_outcome": self.run_outcome,
             "raw_outcome_pass": self.raw_outcome_pass,
             "task_success": self.task_success,
@@ -162,14 +189,22 @@ def evaluate(data: EvaluationInput) -> EvaluationReport:
         [c for c in raw_checks if isinstance(c, dict)] if isinstance(raw_checks, list) else []
     )
 
+    truth = RetrievalTruth.from_spec(data.retrieval)
     results: list[CheckResult] = []
     if not any(c.get("operator") == "output_schema_valid" for c in oracle_checks):
         results.append(_run_check("output_structure", {"operator": "output_schema_valid"}, ctx))
-    results.extend(_run_check(f"c{i}", check, ctx) for i, check in enumerate(oracle_checks))
+    for i, check in enumerate(oracle_checks):
+        if check.get("operator") == "citation_supported":
+            results.append(_citation_check(f"c{i}", check, ctx, truth))
+        else:
+            results.append(_run_check(f"c{i}", check, ctx))
     results.append(_policy_trace_check(trace))
+    if truth is not None:
+        results.append(relevant_in_top_k(ctx, truth))
 
+    active = (*DIMENSIONS, "retrieval") if truth is not None else DIMENSIONS
     dimensions: dict[str, CheckStatus] = {
-        dim: aggregate(r.status for r in results if r.dimension == dim) for dim in DIMENSIONS
+        dim: aggregate(r.status for r in results if r.dimension == dim) for dim in active
     }
     run_outcome = classify_run(data.run_status, data.run_error_class)
     raw = _raw_outcome(run_outcome, dimensions["outcome"])
@@ -182,7 +217,34 @@ def evaluate(data: EvaluationInput) -> EvaluationReport:
         task_success=task,
         task_success_reasons=reasons,
         trace=trace,
+        retrieval_truth=truth,
+        context=ctx,
     )
+
+
+def _citation_check(
+    check_id: str, check: Mapping[str, Any], ctx: CheckContext, truth: RetrievalTruth | None
+) -> CheckResult:
+    """`citation_supported` sólo existe con la suite de retrieval (corpus versionado)."""
+    if truth is None:
+        return CheckResult(
+            check_id=check_id,
+            operator="citation_supported",
+            dimension="evidence",
+            status="error",
+            reason="retrieval_suite_not_applicable",
+        )
+    try:
+        return citation_supported(check_id, check, ctx, truth)
+    except Exception as exc:
+        return CheckResult(
+            check_id=check_id,
+            operator="citation_supported",
+            dimension="evidence",
+            status="error",
+            reason="evaluator_error",
+            detail={"exception": type(exc).__name__},
+        )
 
 
 def _raw_outcome(run_outcome: str, outcome: CheckStatus) -> CheckStatus:

@@ -1,0 +1,23 @@
+{
+  "agents": {
+    "retrieval-scripted-faulty": "22fba78d-95a3-57b4-823c-ec503a769008",
+    "retrieval-scripted-reference": "2494f809-66e0-5b0c-a973-e31edead1f33"
+  },
+  "cells_executed": 100,
+  "cells_planned": 100,
+  "evallab_version": "0.1.0",
+  "experiment_id": "29e859dc-1706-4835-8914-13e9d7b8eac0",
+  "finished_at": "2026-10-01T07:09:55.451412+00:00",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python": "3.14.7",
+  "repetitions": 5,
+  "seeds": [
+    11,
+    23,
+    37,
+    53,
+    71
+  ],
+  "suite": "retrieval-v1",
+  "wall_clock_s": 7.961
+}

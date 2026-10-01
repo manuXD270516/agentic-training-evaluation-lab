@@ -14,7 +14,13 @@ from evallab.evaluation.trace_view import TraceView
 
 CheckStatus = Literal["pass", "fail", "unknown", "not_applicable", "error"]
 Dimension = Literal[
-    "outcome", "output_structure", "required_tool", "semantic_arguments", "evidence", "policy"
+    "outcome",
+    "output_structure",
+    "required_tool",
+    "semantic_arguments",
+    "evidence",
+    "policy",
+    "retrieval",
 ]
 
 OPERATOR_DIMENSIONS: Mapping[str, Dimension] = {

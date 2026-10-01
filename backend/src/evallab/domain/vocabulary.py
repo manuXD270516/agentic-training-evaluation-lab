@@ -85,6 +85,7 @@ ORACLE_OPERATORS = (
     "evidence_from_successful_call",
     "output_schema_valid",
     "abstention_required",
+    "citation_supported",
 )
 
 REQUIRED_CHECKS = (

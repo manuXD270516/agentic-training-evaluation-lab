@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from evallab.canonical import canonical_digest
 from evallab.db import models as m
+from evallab.retrieval.store import CorpusDef, PublishedCorpus, publish_corpus
 from evallab.schemas import (
     AgentConfigurationCreate,
     BenchmarkCreate,
@@ -103,10 +104,15 @@ class Suite:
     benchmark: Mapping[str, Any] = field(default_factory=dict)
     benchmark_version: str = VERSION
     models: tuple[ModelDef, ...] = ()
+    # Corpus versionados en PGVector (M9). Una tool con fixture
+    # `{"kind": "retriever", "corpus": <corpus_id>}` y un escenario con
+    # `retrieval.vector_corpus = <corpus_id>` se resuelven a sus hashes al publicar.
+    vector_corpora: tuple[CorpusDef, ...] = ()
 
 
 @dataclass
 class Published:
+    vector_corpora: dict[str, PublishedCorpus] = field(default_factory=dict)
     fixtures: dict[str, str] = field(default_factory=dict)
     tools: dict[str, m.ToolDefinition] = field(default_factory=dict)
     scenarios: list[m.Scenario] = field(default_factory=list)
@@ -123,6 +129,10 @@ class Published:
         if self.models:
             extra["models"] = {n: r.content_hash for n, r in sorted(self.models.items())}
             extra["prices"] = dict(sorted(self.prices.items()))
+        if self.vector_corpora:
+            extra["vector_corpora"] = {
+                name: corpus.refs() for name, corpus in sorted(self.vector_corpora.items())
+            }
         return {
             **extra,
             "fixtures": dict(sorted(self.fixtures.items())),
@@ -177,7 +187,14 @@ def _scenario_payload(
     data["tools"] = [_ref(t).model_dump(mode="json") for t in tools]
     if data.get("retrieval") is not None:
         retrieval = dict(data["retrieval"])
-        retrieval["corpus_ref"] = corpora[str(retrieval["corpus_ref"])]
+        vector = retrieval.pop("vector_corpus", None)
+        if vector is not None:
+            corpus = published.vector_corpora[str(vector)]
+            retrieval["corpus_ref"] = corpus.corpus_hash
+            retrieval["embedding_set_ref"] = corpus.embedding_set
+            retrieval["retriever_ref"] = corpus.retriever
+        else:
+            retrieval["corpus_ref"] = corpora[str(retrieval["corpus_ref"])]
         data["retrieval"] = retrieval
     data["id"] = str(stable_id("scenario", str(data["slug"])))
     data.setdefault("version", VERSION)
@@ -191,12 +208,18 @@ def publish_suite(db: Session, suite: Suite) -> Published:
         corpus = svc.publish_fixture(db, FixtureCreate(name=f"corpus-{name}", payload=payload))
         corpora[name] = corpus.content_hash
         published.fixtures[f"corpus:{name}"] = corpus.content_hash
+    for vector_corpus in suite.vector_corpora:
+        published.vector_corpora[vector_corpus.corpus_id] = publish_corpus(db, vector_corpus)
 
     for tool in suite.tools:
         fixture_hash = None
         if tool.fixture is not None:
+            payload = dict(tool.fixture)
+            if payload.get("kind") == "retriever" and "corpus" in payload:
+                retriever = published.vector_corpora[str(payload.pop("corpus"))].retriever
+                payload["retriever_ref"] = retriever
             fixture = svc.publish_fixture(
-                db, FixtureCreate(name=f"{tool.name}-fixture", payload=tool.fixture)
+                db, FixtureCreate(name=f"{tool.name}-fixture", payload=payload)
             )
             fixture_hash = fixture.content_hash
             published.fixtures[f"tool:{tool.name}"] = fixture_hash
@@ -234,7 +257,9 @@ def publish_suite(db: Session, suite: Suite) -> Published:
         generator_version=suite.generator_version,
         scenario_refs=[_ref(s) for s in published.scenarios],
         fixture_refs=sorted({h for k, h in published.fixtures.items() if k.startswith("tool:")}),
-        corpus_refs=sorted(corpora.values()),
+        corpus_refs=sorted(
+            {*corpora.values(), *(c.corpus_hash for c in published.vector_corpora.values())}
+        ),
     )
     published.dataset = _existing(
         lambda: svc.publish_dataset(db, dataset),

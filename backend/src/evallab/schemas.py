@@ -239,6 +239,7 @@ class OracleCheck(StrictModel):
         "evidence_from_successful_call",
         "output_schema_valid",
         "abstention_required",
+        "citation_supported",
     ]
     path: str | None = None
     value: JsonValue | None = None
@@ -263,10 +264,10 @@ class OracleCheck(StrictModel):
             raise ValueError("required_tool exige min_calls")
         if op == "arguments_equal" and self.value is None:
             raise ValueError("arguments_equal exige value")
-        if op == "evidence_from_successful_call" and (
+        if op in {"evidence_from_successful_call", "citation_supported"} and (
             self.path is None or not self.path.startswith("/")
         ):
-            raise ValueError("evidence_from_successful_call exige path JSON pointer")
+            raise ValueError(f"{op} exige path JSON pointer")
         return self
 
 
@@ -342,6 +343,9 @@ class RetrievalSpec(StrictModel):
     unanswerable: bool = False
     qrels: JsonObject = Field(default_factory=dict)
     citation_rules: JsonObject | None = None
+    # M9: corpus versionado en PGVector (embeddings y retriever con desempate fijado).
+    embedding_set_ref: Digest | None = None
+    retriever_ref: Digest | None = None
 
     @model_validator(mode="after")
     def _qrels(self) -> Self:
