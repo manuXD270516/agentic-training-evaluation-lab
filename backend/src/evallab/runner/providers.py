@@ -131,5 +131,7 @@ class FixtureModelProvider:
 
 
 def default_providers(load_fixture: Loader) -> Mapping[str, Any]:
-    """Proveedores habilitados en el worker. Live queda fuera hasta configurarlo (7.2)."""
-    return {FIXTURE_PROVIDER: FixtureModelProvider(load_fixture)}
+    """`fixture` siempre; el live compatible con OpenAI sólo si se habilita por entorno."""
+    from evallab.runner.live import live_providers
+
+    return {FIXTURE_PROVIDER: FixtureModelProvider(load_fixture), **live_providers()}

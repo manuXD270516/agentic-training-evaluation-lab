@@ -224,7 +224,7 @@ def test_deferred_pattern_is_not_presented_as_implemented() -> None:
     context = _context()
     result = execute_agent(
         context,
-        _agent(pattern="react", pattern_parameters={}),
+        _agent(pattern="planner_executor", pattern_parameters={}),
         _scenario(),
         DeniedModelGateway(),
         _tools(),
@@ -232,7 +232,7 @@ def test_deferred_pattern_is_not_presented_as_implemented() -> None:
     )
     assert result.status == RunStatus.FAILED
     assert result.error_class == "infrastructure_error"
-    assert result.pattern == "react"
+    assert result.pattern == "planner_executor"
     assert "no implementado" in (result.error or "")
 
 

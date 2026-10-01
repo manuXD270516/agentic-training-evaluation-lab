@@ -24,6 +24,8 @@ from evallab.schemas import (
     DatasetCreate,
     DigestRef,
     FixtureCreate,
+    ModelConfigurationCreate,
+    PriceSnapshotCreate,
     ScenarioCreate,
     ToolCreate,
 )
@@ -57,8 +59,27 @@ class AgentDef:
     pattern_version: str
     pattern_parameters: dict[str, Any]
     tools: tuple[str, ...]
-    roles: tuple[tuple[str, uuid.UUID, str], ...] = ()
+    # (rol, nombre de un ModelDef de la suite)
+    roles: tuple[tuple[str, str], ...] = ()
     prompt_hash: str | None = None
+    version: str = VERSION
+
+
+@dataclass(frozen=True)
+class ModelDef:
+    """ModelConfiguration de la suite. Con `script`, el proveedor `fixture` responde con ese
+    guion (publicado como Fixture y fijado por hash en `requested_model`); con `price`, el
+    modelo referencia ese PriceSnapshot."""
+
+    name: str
+    script: dict[str, Any] | None = None
+    price: dict[str, Any] | None = None
+    provider: str = "fixture"
+    requested_model: str | None = None
+    resolved_revision: str | None = None
+    temperature: float | None = 0.0
+    max_tokens: int | None = 512
+    seed_support: str = "unsupported"
     version: str = VERSION
 
 
@@ -81,6 +102,7 @@ class Suite:
     agents: tuple[AgentDef, ...] = ()
     benchmark: Mapping[str, Any] = field(default_factory=dict)
     benchmark_version: str = VERSION
+    models: tuple[ModelDef, ...] = ()
 
 
 @dataclass
@@ -89,13 +111,20 @@ class Published:
     tools: dict[str, m.ToolDefinition] = field(default_factory=dict)
     scenarios: list[m.Scenario] = field(default_factory=list)
     agents: dict[str, m.AgentConfiguration] = field(default_factory=dict)
+    models: dict[str, m.ModelConfiguration] = field(default_factory=dict)
+    prices: dict[str, str] = field(default_factory=dict)
     dataset: m.Dataset | None = None
     benchmark: m.Benchmark | None = None
 
     def lock(self) -> dict[str, Any]:
         """Hashes publicados: cualquier cambio de contenido cambia este documento."""
         assert self.dataset is not None and self.benchmark is not None
+        extra: dict[str, Any] = {}
+        if self.models:
+            extra["models"] = {n: r.content_hash for n, r in sorted(self.models.items())}
+            extra["prices"] = dict(sorted(self.prices.items()))
         return {
+            **extra,
             "fixtures": dict(sorted(self.fixtures.items())),
             "tools": {n: t.content_hash for n, t in sorted(self.tools.items())},
             "scenarios": {str(s.slug): s.content_hash for s in self.scenarios},
@@ -225,14 +254,58 @@ def publish_suite(db: Session, suite: Suite) -> Published:
         _content_hash,
     )
 
+    for model in suite.models:
+        published.models[model.name] = publish_model_def(db, model, published)
     for agent in suite.agents:
-        published.agents[agent.name] = publish_agent_def(db, agent, published.tools)
+        published.agents[agent.name] = publish_agent_def(
+            db, agent, published.tools, published.models
+        )
     return published
 
 
+def publish_model_def(db: Session, model: ModelDef, published: Published) -> m.ModelConfiguration:
+    requested = model.requested_model
+    if model.script is not None:
+        fixture = svc.publish_fixture(
+            db, FixtureCreate(name=f"model-script-{model.name}", payload=model.script)
+        )
+        published.fixtures[f"model:{model.name}"] = fixture.content_hash
+        requested = fixture.content_hash
+    if requested is None:
+        raise ValueError(f"el modelo {model.name} no declara requested_model ni guion")
+    price_ref = None
+    if model.price is not None:
+        price = agent_svc.publish_price(db, PriceSnapshotCreate.model_validate(model.price))
+        price_ref = price.content_hash
+        published.prices[model.name] = price_ref
+    data = ModelConfigurationCreate.model_validate(
+        {
+            "id": str(stable_id("model", model.name)),
+            "version": model.version,
+            "provider": model.provider,
+            "requested_model": requested,
+            "resolved_revision": model.resolved_revision,
+            "temperature": model.temperature,
+            "seed_support": model.seed_support,
+            "max_tokens": model.max_tokens,
+            "price_snapshot_ref": price_ref,
+        }
+    )
+    row: m.ModelConfiguration = _existing(
+        partial(agent_svc.publish_model, db, data),
+        partial(db.get, m.ModelConfiguration, (data.id, data.version)),
+        _content_hash,
+    )
+    return row
+
+
 def publish_agent_def(
-    db: Session, agent: AgentDef, tools: Mapping[str, m.ToolDefinition]
+    db: Session,
+    agent: AgentDef,
+    tools: Mapping[str, m.ToolDefinition],
+    models: Mapping[str, m.ModelConfiguration] | None = None,
 ) -> m.AgentConfiguration:
+    resolved = models or {}
     data = AgentConfigurationCreate.model_validate(
         {
             "id": str(stable_id("agent", agent.name)),
@@ -242,8 +315,11 @@ def publish_agent_def(
             "prompt_hash": agent.prompt_hash,
             "pattern_parameters": agent.pattern_parameters,
             "roles": [
-                {"role": role, "model": {"id": str(model_id), "version": version}}
-                for role, model_id, version in agent.roles
+                {
+                    "role": role,
+                    "model": {"id": str(resolved[name].id), "version": resolved[name].version},
+                }
+                for role, name in agent.roles
             ],
             "tools": [_ref(tools[name]).model_dump(mode="json") for name in agent.tools],
         }

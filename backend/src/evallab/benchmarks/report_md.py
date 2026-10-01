@@ -28,6 +28,25 @@ def _success_row(label: str, summary: dict[str, Any]) -> str:
     )
 
 
+def _tokens(tokens: dict[str, Any]) -> str:
+    if tokens["status"] == "not_applicable":
+        return f"`not_applicable` ({tokens['reason']})"
+    return (
+        f"`{tokens['status']}`, total {_fmt(tokens['total'])}, subtotal conocido "
+        f"{tokens['known_subtotal']}, llamadas sin uso {tokens['unknown_usage_calls']}"
+    )
+
+
+def _cost(cost: dict[str, Any]) -> str:
+    if cost["status"] == "not_applicable":
+        return f"`not_applicable` ({cost['reason']})"
+    note = f" — {cost['reason']}" if cost.get("reason") else ""
+    return (
+        f"`{cost['status']}`, {_fmt(cost['amount'])} {cost['currency']} (subtotal conocido "
+        f"{cost['known_subtotal']}){note}"
+    )
+
+
 SUCCESS_HEADER = (
     "| Grupo | N | S | Fallos | U | S/N | Cobertura | S/(N-U) | Rango missingness | "
     "raw_outcome S/N |\n|---|---|---|---|---|---|---|---|---|---|"
@@ -96,9 +115,8 @@ def render(report: dict[str, Any], *, title: str, names: dict[str, str] | None =
             "",
             f"- Runs con uso registrado: {usage['runs_with_usage']} de {usage['planned_cells']}",
             f"- Totales: {usage['totals']}",
-            f"- Tokens: `{usage['tokens']['status']}` ({usage['tokens']['reason']}); coste "
-            f"estimado: `{usage['estimated_cost']['status']}` "
-            f"({usage['estimated_cost']['reason']})",
+            f"- Tokens: {_tokens(usage['tokens'])}; coste estimado: "
+            f"{_cost(usage['estimated_cost'])}",
             f"- latency_ms del runner: n={latency['n']}, cobertura {_fmt(latency['coverage'])}, "
             f"media {_fmt(latency['mean'], 1)}, p50 {_fmt(latency['p50'], 1)}, "
             f"p95 {_fmt(latency['p95'], 1)} ({latency['method']})",

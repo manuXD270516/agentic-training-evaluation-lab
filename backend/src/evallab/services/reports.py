@@ -13,6 +13,7 @@ import uuid
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from decimal import Decimal
 from fractions import Fraction
 from typing import Any
 
@@ -22,6 +23,7 @@ from sqlalchemy.orm import Session
 from evallab.canonical import canonical_digest
 from evallab.db import models as m
 from evallab.evaluation.metrics import PROFILE_DESCRIPTOR, success_summary
+from evallab.runner.evidence import normalize_evidence
 from evallab.services.errors import ExperimentNotSealedError, NotFoundError
 from evallab.services.execution import TERMINAL_EVENT_TYPES
 
@@ -218,15 +220,67 @@ def _metric_summary(cells: Sequence[Cell], metric: str) -> dict[str, Any]:
     }
 
 
+def _run_usage(cell: Cell) -> dict[str, Any]:
+    result = cell.run.result if cell.run is not None else None
+    usage = result.get("usage") if isinstance(result, dict) else None
+    return usage if isinstance(usage, dict) else {}
+
+
+def _tokens_and_cost(usages: Sequence[dict[str, Any]], model_calls: int) -> dict[str, Any]:
+    """Suma tokens y coste de los runs; cualquier parte desconocida deja el total unknown y
+    conserva el subtotal conocido (metrics.md). Sin llamadas a modelo, N/A."""
+    if model_calls == 0:
+        return {
+            "tokens": {"status": "not_applicable", "reason": "sin llamadas a modelo"},
+            "estimated_cost": {
+                "status": "not_applicable",
+                "currency": "USD",
+                "reason": "sin llamadas a modelo ni tools con coste declarado",
+            },
+        }
+    known_tokens = unknown_token_calls = unknown_cost_calls = 0
+    known_cost = Decimal(0)
+    currencies: set[str] = set()
+    synthetic = overrun = False
+    for usage in usages:
+        tokens = usage.get("tokens") or {}
+        cost = usage.get("cost") or {}
+        if usage.get("model_calls") and not tokens:
+            unknown_token_calls += int(usage.get("model_calls") or 0)
+        known_tokens += int(tokens.get("known_subtotal") or 0)
+        unknown_token_calls += int(tokens.get("unknown_usage_calls") or 0)
+        if usage.get("model_calls") and not cost:
+            unknown_cost_calls += int(usage.get("model_calls") or 0)
+        known_cost += Decimal(str(cost.get("known_subtotal") or "0"))
+        unknown_cost_calls += int(cost.get("unknown_cost_calls") or 0)
+        if cost.get("currency"):
+            currencies.add(str(cost["currency"]))
+        synthetic = synthetic or bool(cost.get("synthetic_price"))
+        overrun = overrun or bool(cost.get("overrun"))
+    return {
+        "tokens": {
+            "status": "unknown" if unknown_token_calls else "observed",
+            "total": None if unknown_token_calls else known_tokens,
+            "known_subtotal": known_tokens,
+            "unknown_usage_calls": unknown_token_calls,
+        },
+        "estimated_cost": {
+            "status": "unknown" if unknown_cost_calls else "estimated",
+            "amount": None if unknown_cost_calls else format(known_cost, "f"),
+            "known_subtotal": format(known_cost, "f"),
+            "currency": ",".join(sorted(currencies)) or "USD",
+            "unknown_cost_calls": unknown_cost_calls,
+            "synthetic_price": synthetic,
+            "overrun_runs": overrun,
+            "reason": "precio sintético: no es un coste real" if synthetic else None,
+        },
+    }
+
+
 def _usage(cells: Sequence[Cell]) -> dict[str, Any]:
     executed = [c for c in cells if c.run is not None and isinstance(c.run.result, dict)]
-    totals = {key: 0 for key in USAGE_KEYS}
-    for cell in executed:
-        result = cell.run.result if cell.run is not None else None
-        usage = (result.get("usage") if isinstance(result, dict) else None) or {}
-        for key in USAGE_KEYS:
-            totals[key] += int(usage.get(key) or 0)
-    model_calls = totals["model_calls"]
+    usages = [_run_usage(c) for c in executed]
+    totals = {key: sum(int(u.get(key) or 0) for u in usages) for key in USAGE_KEYS}
     return {
         "runs_with_usage": len(executed),
         "planned_cells": len(cells),
@@ -234,18 +288,7 @@ def _usage(cells: Sequence[Cell]) -> dict[str, Any]:
         "mean_per_run": {
             key: (value / len(executed) if executed else None) for key, value in totals.items()
         },
-        # Sin llamadas a modelo no hay tokens que contar: N/A, nunca cero inventado.
-        "tokens": {
-            "status": "not_applicable" if model_calls == 0 else "unknown",
-            "reason": "sin llamadas a modelo" if model_calls == 0 else "sin contabilidad",
-        },
-        "estimated_cost": {
-            "status": "not_applicable" if model_calls == 0 else "unknown",
-            "currency": "USD",
-            "reason": "sin llamadas a modelo ni tools con coste declarado"
-            if model_calls == 0
-            else "sin price snapshot",
-        },
+        **_tokens_and_cost(usages, totals["model_calls"]),
     }
 
 
@@ -283,21 +326,8 @@ def _agent_label(db: Session, agent_id: uuid.UUID, version: str) -> dict[str, An
 
 
 def _normalized_output(result: Mapping[str, Any]) -> Any:
-    """Salida con cada id de evidencia propio sustituido por su posición: los event_id son
-    nuevos en cada run y no deben contar como salidas distintas."""
-    refs = result.get("evidence_refs") or []
-    positions = {str(ref.get("event_id")): f"evidence:{i}" for i, ref in enumerate(refs)}
-
-    def walk(value: Any) -> Any:
-        if isinstance(value, dict):
-            return {k: walk(v) for k, v in value.items()}
-        if isinstance(value, list):
-            return [walk(v) for v in value]
-        if isinstance(value, str):
-            return positions.get(value, value)
-        return value
-
-    return walk(result.get("output"))
+    """Salida con cada id de evidencia propio sustituido por su posición."""
+    return normalize_evidence(result.get("output"), result.get("evidence_refs") or [])
 
 
 def _outputs_by_cell(cells: Sequence[Cell]) -> int:

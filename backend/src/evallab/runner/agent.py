@@ -354,6 +354,23 @@ class _Run:
             ) as current:
                 try:
                     result = gateway.generate(call)
+                except ReplayMismatchError as exc:
+                    # Toda llamada iniciada queda con resultado explícito, también la divergente.
+                    telemetry.mark_error(current, exc.error_class)
+                    self.sink.append(
+                        "model.failed",
+                        role,
+                        {
+                            "request_event_id": str(requested.event_id),
+                            "attempt": attempt,
+                            "error_class": exc.error_class,
+                            "kind": exc.error_class,
+                            "error": exc.message,
+                            "retriable": False,
+                        },
+                        parent_event_id=requested.event_id,
+                    )
+                    raise
                 except ModelCallError as exc:
                     self.model_calls += 1
                     self.accounting.record_failure(role)
@@ -659,7 +676,7 @@ def _execute_agent(
         if mismatch is not None:
             return run.fail(ReplayMismatchError.error_class, mismatch)
     try:
-        adapter = adapter_for(agent, scenario)
+        adapter = adapter_for(agent, scenario, tools.allowed_tools())
     except RunnerError as exc:
         return run.fail(exc.error_class, exc.message)
     run.pattern, run.pattern_version = adapter.pattern, adapter.pattern_version

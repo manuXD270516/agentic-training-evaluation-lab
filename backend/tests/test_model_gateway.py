@@ -33,6 +33,12 @@ from evallab.runner.models import (
     estimate_cost,
 )
 from evallab.runner.providers import FixtureModelProvider
+from evallab.runner.replay import (
+    RecordedModelAttempt,
+    Recording,
+    ReplayMismatchError,
+    ReplayModelGateway,
+)
 from evallab.runner.sink import MemoryTraceSink
 from evallab.runner.tools import FixtureToolGateway
 from evallab.schemas import ScenarioPublicOut
@@ -294,3 +300,40 @@ def test_late_accounting_overrun_is_recorded(monkeypatch: pytest.MonkeyPatch) ->
     cost = _usage(result)["cost"]
     assert result.status == RunStatus.COMPLETED
     assert cost["overrun"] is True and Decimal(cost["amount"]) > Decimal("0.01")
+
+
+def test_model_replay_serves_recording_and_rejects_divergence() -> None:
+    request = ModelRequest(role="executor", messages=({"role": "user", "content": "hola"},))
+    completed = {
+        "output": {"content": "42", "tool_calls": []},
+        "usage": {"input_tokens": 5, "output_tokens": 1, "source": "observed"},
+        "cost": {"status": "unknown", "amount": None, "currency": "USD"},
+        "resolved_model": "unknown",
+        "revision_status": "unknown",
+        "finish_reason": "stop",
+    }
+    attempts = (
+        RecordedModelAttempt(
+            digest=request.digest(),
+            role="executor",
+            replayable=True,
+            failed={"kind": "rate_limited", "error": "x", "retriable": True},
+        ),
+        RecordedModelAttempt(
+            digest=request.digest(), role="executor", replayable=True, completed=completed
+        ),
+    )
+    gateway = ReplayModelGateway({"executor": _model()}, Recording({}, (), attempts))
+    with pytest.raises(ModelCallError) as recorded_failure:
+        gateway.generate(request)
+    assert recorded_failure.value.kind == "rate_limited" and recorded_failure.value.retriable
+    result = gateway.generate(request)
+    assert result.response.content == "42" and result.response.usage.total == 6
+    assert gateway.pending() == 0
+    with pytest.raises(ReplayMismatchError, match="no existe"):
+        gateway.generate(request)
+
+    other = ModelRequest(role="executor", messages=({"role": "user", "content": "adiós"},))
+    divergent = ReplayModelGateway({"executor": _model()}, Recording({}, (), attempts[1:]))
+    with pytest.raises(ReplayMismatchError, match="no coincide"):
+        divergent.generate(other)

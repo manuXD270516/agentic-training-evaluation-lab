@@ -11,8 +11,9 @@ from evallab.benchmarks.suite import Suite
 
 def suites() -> dict[str, Suite]:
     from evallab.benchmarks.pilot import PILOT
+    from evallab.benchmarks.pilot_models import PILOT_MODELS
 
-    return {"pilot": PILOT}
+    return {"pilot": PILOT, "pilot-models": PILOT_MODELS}
 
 
 def get_suite(name: str) -> Suite:

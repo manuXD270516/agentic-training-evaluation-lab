@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import dataclasses
 import uuid
 from collections import Counter
 from collections.abc import Iterable, Sequence
@@ -142,7 +143,10 @@ class FixtureToolGateway:
         self._applied: dict[uuid.UUID, Any] = {}
 
     def allowed_tools(self) -> Sequence[AllowedTool]:
-        return tuple(binding.tool for binding in self._bindings.values())
+        return tuple(
+            dataclasses.replace(binding.tool, input_schema=binding.input_schema)
+            for binding in self._bindings.values()
+        )
 
     def resolve(self, name: str) -> AllowedTool | None:
         binding = self._bindings.get(name)

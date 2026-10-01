@@ -19,6 +19,8 @@ class AllowedTool:
     version: str
     name: str
     content_hash: str
+    # Schema de entrada que un patrón con modelo describe al LLM; no forma parte de la identidad.
+    input_schema: Mapping[str, Any] = field(default_factory=dict, compare=False, hash=False)
 
 
 @dataclass(frozen=True)

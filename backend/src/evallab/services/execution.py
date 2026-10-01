@@ -40,12 +40,13 @@ from evallab.runner.contracts import (
     Usage,
 )
 from evallab.runner.errors import InvalidFaultScheduleError, RunnerError
+from evallab.runner.evidence import normalize_evidence
 from evallab.runner.gateways import DeniedModelGateway
 from evallab.runner.limits import Limits
 from evallab.runner.models import ModelSnapshot, PriceInfo, ProviderModelGateway
 from evallab.runner.providers import FIXTURE_PROVIDER, default_providers
 from evallab.runner.redaction import redact, redaction_metadata
-from evallab.runner.replay import ReplayMismatchError, ReplayToolGateway
+from evallab.runner.replay import ReplayMismatchError, ReplayModelGateway, ReplayToolGateway
 from evallab.runner.sink import MemoryTraceSink, mark_incomplete
 from evallab.runner.tools import FixtureToolGateway, ToolBinding, parse_fault_schedule
 from evallab.services.catalog import scenario_public_view
@@ -507,14 +508,23 @@ def _run_attempt(db: Session, claim: Claim, *, policy: SandboxPolicy | None) -> 
         tools: ToolGateway = _tool_gateway(db, scenario, agent)
         model = model_gateway(db, snapshot)
         if run.mode == "replay" and run.source_run_id is not None:
-            tools, replay, source_output = _replay_gateway(db, run.source_run_id, tools)
+            replay_tools, replay, source_output = _replay_gateway(db, run.source_run_id, tools)
+            tools = replay_tools
+            if snapshot.pattern != "scripted":
+                # El modelo también se sirve de la grabación: nunca se llama al proveedor.
+                model = ReplayModelGateway(model.models(), replay_tools.recording)
         result = execute_agent(
             context, snapshot, scenario_public_view(scenario), model, tools, sink
         )
         if replay is not None:
             replay["output_matches_source"] = (
                 result.status == RunStatus.COMPLETED
-                and canonical_digest(redact(result.output)[0]) == source_output
+                and canonical_digest(
+                    normalize_evidence(
+                        redact(result.output)[0], [r.as_json() for r in result.evidence_refs]
+                    )
+                )
+                == source_output
             )
     except RunnerError as exc:
         mark_incomplete(sink)
@@ -547,7 +557,9 @@ def _replay_gateway(
         "recorded_calls": len(recording.calls),
     }
     gateway = ReplayToolGateway(live.allowed_tools(), recording)
-    return gateway, info, canonical_digest(result.get("output"))
+    # Los ids de evidencia del replay son nuevos: se comparan por posición, no por valor.
+    source_output = normalize_evidence(result.get("output"), result.get("evidence_refs") or [])
+    return gateway, info, canonical_digest(source_output)
 
 
 # --- Fase 3: persistir con fencing ---------------------------------------------------------
