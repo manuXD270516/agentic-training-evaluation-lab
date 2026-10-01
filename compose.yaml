@@ -60,6 +60,10 @@ services:
       <<: [*db-env, *otel-env]
       API_HOST: 0.0.0.0
       API_PORT: "8000"
+      # Demo (13.2): EVALLAB_READ_ONLY=1 rechaza escrituras; EVALLAB_ADMIN_TOKEN protege
+      # escrituras y oráculos. Vacíos por defecto (desarrollo local).
+      EVALLAB_READ_ONLY: ${EVALLAB_READ_ONLY:-0}
+      EVALLAB_ADMIN_TOKEN: ${EVALLAB_ADMIN_TOKEN:-}
     ports:
       - "127.0.0.1:${API_PORT:-8000}:8000"
     healthcheck:

@@ -38,6 +38,33 @@ class ApiSettings(BaseSettings):
     port: int = Field(default=8000, ge=1, le=65535)
 
 
+class AccessSettings(BaseSettings):
+    """Control de acceso de la API (M12, 13.2).
+
+    Por defecto (desarrollo local) todo está abierto. `EVALLAB_READ_ONLY=1` (demo) rechaza
+    cualquier escritura con 403 aunque haya token y deja el oráculo privado inaccesible salvo
+    con token. Con `EVALLAB_ADMIN_TOKEN`, escrituras y oráculos exigen
+    `Authorization: Bearer <token>`.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="EVALLAB_", extra="ignore", frozen=True)
+
+    read_only: bool = False
+    admin_token: SecretStr | None = Field(default=None)
+
+    @field_validator("admin_token", mode="before")
+    @classmethod
+    def _empty_is_none(cls, value: object) -> object:
+        return None if value == "" else value
+
+    @field_validator("admin_token")
+    @classmethod
+    def _strong_token(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is not None and len(value.get_secret_value()) < 24:
+            raise ValueError("EVALLAB_ADMIN_TOKEN debe tener al menos 24 caracteres")
+        return value
+
+
 class SandboxPolicy(BaseSettings):
     """Política de aislamiento de los agentes ejecutados por el worker.
 
