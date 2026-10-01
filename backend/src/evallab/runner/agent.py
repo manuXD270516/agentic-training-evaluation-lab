@@ -4,6 +4,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
+from evallab import telemetry
 from evallab.domain.lifecycle import RunStatus
 from evallab.runner.contracts import (
     Action,
@@ -197,6 +198,31 @@ class _Run:
         if stopped is not None:
             return stopped
         call_id = uuid.uuid4()
+        with telemetry.span(
+            "tool.invoke",
+            **{
+                "evallab.run_id": str(self.context.run_id),
+                "evallab.attempt_id": str(self.context.attempt_id),
+                "evallab.tool.name": call.tool,
+                "evallab.tool.call_id": str(call_id),
+            },
+        ) as current:
+            recorded = self._record_tool(call, call_id, tools, step_event)
+            if isinstance(recorded, Observation):
+                telemetry.set_attributes(
+                    current,
+                    **{
+                        "evallab.tool.status": recorded.status,
+                        "evallab.tool.error_class": recorded.error_class,
+                    },
+                )
+                if recorded.status != "completed":
+                    telemetry.mark_error(current, recorded.status)
+            return recorded
+
+    def _record_tool(
+        self, call: ToolCall, call_id: uuid.UUID, tools: ToolGateway, step_event: MemoryEvent
+    ) -> Observation | _Stop:
         resolved = tools.resolve(call.tool)
         requested = self.sink.append(
             "tool.requested",
@@ -381,6 +407,42 @@ def execute_agent(
     tools: ToolGateway,
     sink: MemoryTraceSink,
 ) -> RunResult:
+    """Ejecuta el patrón dentro del span `agent.execute`; los eventos lo referencian."""
+    with telemetry.span(
+        "agent.execute",
+        **{
+            "evallab.run_id": str(context.run_id),
+            "evallab.attempt_id": str(context.attempt_id),
+            "evallab.run.mode": context.mode,
+            "evallab.agent.pattern": agent.pattern,
+            "evallab.agent.pattern_version": agent.pattern_version,
+            "evallab.scenario_id": str(scenario.id),
+            "evallab.scenario_version": scenario.version,
+        },
+    ) as current:
+        result = _execute_agent(context, agent, scenario, model, tools, sink)
+        telemetry.set_attributes(
+            current,
+            **{
+                "evallab.run.status": str(result.status),
+                "evallab.run.error_class": result.error_class,
+                "evallab.trace.event_count": len(sink.events),
+                "evallab.trace.completeness": sink.completeness,
+            },
+        )
+        if result.error_class is not None:
+            telemetry.mark_error(current, result.error_class)
+        return result
+
+
+def _execute_agent(
+    context: RunContext,
+    agent: AgentSnapshot,
+    scenario: ScenarioPublicOut,
+    model: ModelGateway,
+    tools: ToolGateway,
+    sink: MemoryTraceSink,
+) -> RunResult:
     public = scenario.model_dump(mode="json")
     for leaked in PRIVATE_SCENARIO_FIELDS:
         if leaked in public:
@@ -469,12 +531,16 @@ def execute_agent(
             if stopped is not None:
                 run.end_step(step_id, started, "interrupted")
                 return run.stop(stopped)
-            try:
-                model.generate(action.messages, tools.allowed_tools())
-            except ModelNotAllowedError as exc:
-                message = exc.message
-            else:
-                message = "el patrón emitió una llamada a modelo"
+            with telemetry.span(
+                "model.generate", **{"evallab.run_id": str(context.run_id)}
+            ) as current:
+                try:
+                    model.generate(action.messages, tools.allowed_tools())
+                except ModelNotAllowedError as exc:
+                    message = exc.message
+                else:
+                    message = "el patrón emitió una llamada a modelo"
+                telemetry.mark_error(current, ModelNotAllowedError.error_class)
             run.end_step(step_id, started, "failed")
             return run.fail(ModelNotAllowedError.error_class, message)
         run.end_step(step_id, started, "failed")

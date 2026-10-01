@@ -119,6 +119,8 @@ class TraceEventOut(BaseModel):
     type: str
     actor_role: str
     parent_event_id: uuid.UUID | None
+    otel_trace_id: str | None = None
+    otel_span_id: str | None = None
     payload: JsonObject
     payload_digest: str
     redaction_metadata: JsonObject

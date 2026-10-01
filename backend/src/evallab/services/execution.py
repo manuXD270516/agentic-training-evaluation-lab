@@ -18,6 +18,7 @@ from typing import Any, Literal, cast
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from evallab import telemetry
 from evallab.canonical import canonical_digest
 from evallab.db import models as m
 from evallab.domain.lifecycle import (
@@ -363,10 +364,33 @@ def claim_next_run(
 # --- Fase 2: ejecutar ----------------------------------------------------------------------
 
 
+def _claim_attributes(claim: Claim) -> dict[str, Any]:
+    return {
+        "evallab.run_id": str(claim.run_id),
+        "evallab.attempt_id": str(claim.attempt_id),
+        "evallab.attempt_number": claim.attempt_number,
+        "evallab.fencing_token": claim.fencing_token,
+        "evallab.worker_id": claim.worker_id,
+    }
+
+
 def run_attempt(
     db: Session, claim: Claim, *, policy: SandboxPolicy | None = None
 ) -> AttemptOutcome:
     """Ejecuta el intento sin escribir en la base; todo efecto queda en memoria del intento."""
+    with telemetry.span("worker.execute", **_claim_attributes(claim)) as current:
+        outcome = _run_attempt(db, claim, policy=policy)
+        telemetry.set_attributes(
+            current,
+            **{
+                "evallab.run.status": str(outcome.result.status),
+                "evallab.run.error_class": outcome.result.error_class,
+            },
+        )
+        return outcome
+
+
+def _run_attempt(db: Session, claim: Claim, *, policy: SandboxPolicy | None) -> AttemptOutcome:
     run = db.get(m.Run, claim.run_id)
     if run is None:
         raise NotFoundError("run inexistente", run_id=str(claim.run_id))
@@ -454,6 +478,15 @@ def _replay_gateway(
 
 def finish_attempt(db: Session, outcome: AttemptOutcome, *, now: datetime | None = None) -> bool:
     """Persiste el intento si su fencing token sigue vigente; si no, lo marca `rejected`."""
+    with telemetry.span("worker.persist", **_claim_attributes(outcome.claim)) as current:
+        accepted = _finish_attempt(db, outcome, now=now)
+        telemetry.set_attributes(current, **{"evallab.attempt.accepted": accepted})
+        if not accepted:
+            telemetry.mark_error(current, "fencing_rejected")
+        return accepted
+
+
+def _finish_attempt(db: Session, outcome: AttemptOutcome, *, now: datetime | None) -> bool:
     now = now or datetime.now(UTC)
     claim = outcome.claim
     run = db.get(m.Run, claim.run_id, with_for_update=True)

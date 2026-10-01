@@ -72,6 +72,8 @@ def persist_events(
                 payload=event.payload,
                 payload_digest=event.payload_digest,
                 redaction_metadata=event.redaction_metadata,
+                otel_trace_id=event.otel_trace_id,
+                otel_span_id=event.otel_span_id,
             )
         )
         inserted += 1

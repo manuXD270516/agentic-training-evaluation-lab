@@ -1,3 +1,4 @@
+from collections.abc import Awaitable, Callable
 from typing import Literal
 
 from fastapi import FastAPI, Request, Response, status
@@ -7,7 +8,7 @@ from sqlalchemy import Engine
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import sessionmaker
 
-from evallab import __version__
+from evallab import __version__, telemetry
 from evallab.api import catalog, evaluations, experiments
 from evallab.db.engine import create_db_engine
 from evallab.health import DatabaseCheck, check_database
@@ -45,6 +46,37 @@ def create_app(
     app.include_router(experiments.router)
     app.include_router(catalog.router)
     app.include_router(evaluations.router)
+
+    @app.middleware("http")
+    async def http_span(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        # Sólo método, ruta, estado e ids de path: nunca cuerpos ni cabeceras. Los health checks
+        # no generan spans (Compose los consulta cada pocos segundos).
+        if request.url.path.startswith("/health"):
+            return await call_next(request)
+        with telemetry.span(
+            f"HTTP {request.method}", **{"http.request.method": request.method}
+        ) as current:
+            response = await call_next(request)
+            route = request.scope.get("route")
+            template = getattr(route, "path", None)
+            params = request.path_params
+            telemetry.set_attributes(
+                current,
+                **{
+                    "http.route": template,
+                    "http.response.status_code": response.status_code,
+                    "evallab.run_id": params.get("run_id"),
+                    "evallab.experiment_id": params.get("experiment_id"),
+                    "evallab.evaluation_id": params.get("evaluation_id"),
+                },
+            )
+            if template is not None:
+                current.update_name(f"{request.method} {template}")
+            if response.status_code >= 500:
+                telemetry.mark_error(current, str(response.status_code))
+            return response
 
     @app.exception_handler(DomainError)
     def domain_error(_: Request, exc: DomainError) -> JSONResponse:

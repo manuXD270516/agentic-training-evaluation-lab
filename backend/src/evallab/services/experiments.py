@@ -388,6 +388,8 @@ def trace_to_out(trace: m.Trace, events: list[m.TraceEvent]) -> TraceOut:
                 type=event.type,
                 actor_role=event.actor_role,
                 parent_event_id=event.parent_event_id,
+                otel_trace_id=event.otel_trace_id,
+                otel_span_id=event.otel_span_id,
                 payload=event.payload if isinstance(event.payload, dict) else {},
                 payload_digest=event.payload_digest,
                 redaction_metadata=(

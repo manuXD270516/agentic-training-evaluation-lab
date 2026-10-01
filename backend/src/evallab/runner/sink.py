@@ -9,6 +9,7 @@ from typing import Any
 from evallab.canonical import canonical_digest
 from evallab.runner.errors import TraceIntegrityError
 from evallab.runner.redaction import redact, redaction_metadata
+from evallab.telemetry import current_ids
 
 # Un campo redactado en estas llamadas impide reconstruirlas en replay.
 REPLAYED_PREFIXES = ("model.", "tool.")
@@ -26,6 +27,9 @@ class MemoryEvent:
     payload: dict[str, Any]
     payload_digest: str
     redaction_metadata: dict[str, Any]
+    # Correlación con el span activo; no forma parte de ningún digest.
+    otel_trace_id: str | None = None
+    otel_span_id: str | None = None
 
 
 @dataclass
@@ -61,6 +65,7 @@ class MemoryTraceSink:
                 "event_id reenviado con digest distinto",
             )
         now = datetime.now(UTC)
+        otel_trace_id, otel_span_id = current_ids()
         elapsed = max(0, int((now - self.started_at).total_seconds() * 1000))
         event = MemoryEvent(
             event_id=assigned,
@@ -75,6 +80,8 @@ class MemoryTraceSink:
             redaction_metadata=redaction_metadata(
                 fields, replayable=not event_type.startswith(REPLAYED_PREFIXES)
             ),
+            otel_trace_id=otel_trace_id,
+            otel_span_id=otel_span_id,
         )
         self._events.append(event)
         self._by_id[assigned] = event

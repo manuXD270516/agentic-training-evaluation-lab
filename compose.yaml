@@ -12,6 +12,10 @@ x-backend: &backend
     migrate:
       condition: service_completed_successfully
 
+x-otel-env: &otel-env
+  # Vacío = telemetría desactivada. Con el perfil `otel`: http://otel-collector:4318
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+
 x-db-env: &db-env
   POSTGRES_HOST: db
   POSTGRES_PORT: "5432"
@@ -53,7 +57,7 @@ services:
     <<: *backend
     command: ["evallab-api"]
     environment:
-      <<: *db-env
+      <<: [*db-env, *otel-env]
       API_HOST: 0.0.0.0
       API_PORT: "8000"
     ports:
@@ -73,7 +77,7 @@ services:
     <<: *backend
     command: ["evallab-worker"]
     environment:
-      <<: *db-env
+      <<: [*db-env, *otel-env]
       WORKER_HEALTH_HOST: 127.0.0.1
       WORKER_HEALTH_PORT: "8001"
       WORKER_AGENT_NETWORK: deny
@@ -89,6 +93,18 @@ services:
       interval: 3s
       timeout: 5s
       retries: 20
+    networks: [internal]
+
+  otel-collector:
+    # Opcional: `docker compose --profile otel up`. Sólo red interna, sin puertos publicados.
+    profiles: [otel]
+    image: otel/opentelemetry-collector:0.162.0@sha256:310a800ad69ee430e7c541796852a242c9c7db97aaad4daa5ccf843c525fbdb2
+    command: ["--config=/etc/otelcol/collector.yaml"]
+    volumes:
+      - ./otel/collector.yaml:/etc/otelcol/collector.yaml:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
     networks: [internal]
 
 networks:

@@ -1,0 +1,18 @@
+# Collector OTel opcional (perfil Compose `otel`). Sólo recibe spans OTLP/HTTP y los escribe en
+# su log; no tiene salida a Internet. La evidencia de evaluación nunca depende de él.
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+processors:
+  batch: {}
+exporters:
+  debug:
+    verbosity: basic
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]

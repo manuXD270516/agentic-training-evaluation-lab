@@ -10,6 +10,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from evallab import telemetry
 from evallab.db import models as m
 from evallab.domain.lifecycle import EVALUATION_LIFECYCLE, EvaluationStatus, RunStatus
 from evallab.evaluation.engine import SUITE_HASH, SUITE_VERSION, EvaluationInput, evaluate
@@ -44,6 +45,24 @@ def _transition(evaluation: m.Evaluation, target: EvaluationStatus, db: Session)
 def evaluate_run(db: Session, run_id: uuid.UUID) -> m.Evaluation:
     """Evalúa un run terminal con traza sellada. Una evaluación previa de la misma traza queda
     intacta y se referencia como `parent_evaluation_id`."""
+    with telemetry.span(
+        "evaluation.evaluate",
+        **{"evallab.run_id": str(run_id), "evallab.evaluator.suite_version": SUITE_VERSION},
+    ) as current:
+        evaluation = _evaluate_run(db, run_id)
+        telemetry.set_attributes(
+            current,
+            **{
+                "evallab.evaluation_id": str(evaluation.id),
+                "evallab.evaluation.status": evaluation.status,
+            },
+        )
+        if evaluation.status == EvaluationStatus.ERROR:
+            telemetry.mark_error(current, evaluation.error or "evaluator_error")
+        return evaluation
+
+
+def _evaluate_run(db: Session, run_id: uuid.UUID) -> m.Evaluation:
     run = db.get(m.Run, run_id, with_for_update=True)
     if run is None:
         raise NotFoundError("run inexistente", run_id=str(run_id))

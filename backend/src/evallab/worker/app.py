@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from evallab import __version__
+from evallab import __version__, telemetry
 from evallab.db.engine import create_db_engine
 from evallab.health import DatabaseCheck, check_database
 from evallab.services.execution import claim_next_run, finish_attempt, run_attempt
@@ -54,10 +54,14 @@ def poll_once(
         )
     if claim is None:
         return False
-    with sessions() as db:
-        outcome = run_attempt(db, claim, policy=policy)
-    with sessions.begin() as db:
-        accepted = finish_attempt(db, outcome)
+    with telemetry.span(
+        "worker.attempt",
+        **{"evallab.run_id": str(claim.run_id), "evallab.attempt_id": str(claim.attempt_id)},
+    ):
+        with sessions() as db:
+            outcome = run_attempt(db, claim, policy=policy)
+        with sessions.begin() as db:
+            accepted = finish_attempt(db, outcome)
     if not accepted:
         logger.warning("intento %s rechazado por fencing", claim.attempt_id)
     return True

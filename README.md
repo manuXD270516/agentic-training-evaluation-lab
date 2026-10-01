@@ -2,7 +2,7 @@
 
 Laboratorio para medir éxito, herramientas, argumentos, evidencia, recuperación, latencia y coste de sistemas agénticos mediante experimentos reproducibles.
 
-**Estado: M0–M3 y parte de M4: contratos del runner, baseline scripted offline, gateway de tools sobre fixtures declarativas con validación JSON Schema, allowlist y estado aislado por run, límites de pasos/llamadas/deadline, retries trazados sobre fallos inyectados, eventos sellados en `Trace`/`TraceEvent`, worker con leases y fencing token, suite determinística `deterministic-core@1.0.0` y perfil de métricas `core-metrics@1.0.0` con evaluaciones versionadas, y (M4) persistencia idempotente de eventos, redacción de secretos antes del digest, export verificable y replay estricto offline. Todavía no hay OpenTelemetry (5.2), dataset piloto de 14 casos (M5), benchmarks publicados ni resultados.**
+**Estado: M0–M3 y parte de M4: contratos del runner, baseline scripted offline, gateway de tools sobre fixtures declarativas con validación JSON Schema, allowlist y estado aislado por run, límites de pasos/llamadas/deadline, retries trazados sobre fallos inyectados, eventos sellados en `Trace`/`TraceEvent`, worker con leases y fencing token, suite determinística `deterministic-core@1.0.0` y perfil de métricas `core-metrics@1.0.0` con evaluaciones versionadas, y (M4) persistencia idempotente de eventos, redacción de secretos antes del digest, export verificable, replay estricto offline y spans OpenTelemetry correlacionados con la traza (opcionales; la evidencia no depende del collector). Todavía no hay dataset piloto de 14 casos (M5), benchmarks publicados ni resultados.**
 
 API disponible (localhost:8000; esquema OpenAPI en `/docs`):
 
@@ -50,7 +50,8 @@ backend/                 Python 3.14.7 + uv (paquete `evallab`)
   tests/                 Unitarios; tests/integration/ usa PostgreSQL real
   Dockerfile             Imagen de API, worker y migrate (bases fijadas por digest, no root)
 frontend/                React + Vite + TypeScript; página inicial sin vistas funcionales
-compose.yaml             PostgreSQL 18.6, migrate (una vez), API y worker
+compose.yaml             PostgreSQL 18.6, migrate (una vez), API, worker y collector OTel opcional (perfil otel)
+otel/collector.yaml      Configuración del collector opcional (sólo log de spans)
 .env.example             Configuración de ejemplo sin credenciales
 .github/workflows/ci.yml CI: OpenSpec, backend, frontend y smoke de Compose
 ```
@@ -98,6 +99,18 @@ $env:EVALLAB_REQUIRE_DB = "1"; uv run --locked --env-file ../.env pytest
 ```
 
 Los tests de integración crean una base de datos vacía y temporal por sesión en el servidor de `POSTGRES_*` (requiere `docker compose up --detach --wait db`), aplican las migraciones y la eliminan al terminar. Sin `EVALLAB_REQUIRE_DB=1` se omiten si PostgreSQL no está disponible; CI los exige.
+
+## Observabilidad (opcional)
+
+Sin `OTEL_EXPORTER_OTLP_ENDPOINT` la telemetría está desactivada. Para ver spans de API, worker, tools y evaluador:
+
+```powershell
+$env:OTEL_EXPORTER_OTLP_ENDPOINT = "http://otel-collector:4318"
+docker compose --profile otel up --build --detach --wait
+docker compose logs otel-collector
+```
+
+Los spans llevan ids (`evallab.run_id`, `attempt_id`, `tool.call_id`, `evaluation_id`) y nunca payloads; cada evento de traza guarda `otel_trace_id`/`otel_span_id` para correlacionar. Si el collector cae, sólo se pierden spans: la traza de evaluación se persiste en PostgreSQL igual.
 
 ## Aislamiento del worker
 

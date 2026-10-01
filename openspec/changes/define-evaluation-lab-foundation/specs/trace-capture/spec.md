@@ -12,6 +12,10 @@ El sistema SHALL persistir eventos conforme trace-format.md, con ids, secuencia,
 - **WHEN** el collector OpenTelemetry está caído y la persistencia está disponible
 - **THEN** la traza de evaluación conserva todos los eventos.
 
+#### Scenario: Correlated telemetry without payloads
+- **WHEN** un run se ejecuta con exportación OpenTelemetry activa
+- **THEN** cada evento lleva `otel_trace_id`/`otel_span_id` del span que lo emitió, los spans de worker, tool y evaluador llevan `run_id`, ningún span contiene payloads ni secretos y esos ids no alteran el digest sellado.
+
 #### Scenario: Scripted events are sealed after in-memory capture
 - **WHEN** un run scripted termina
 - **THEN** el sink asigna secuencia en memoria, se sella contador/digest/completeness y `GET /runs/{id}/trace` devuelve los eventos ordenados sin oráculo.
