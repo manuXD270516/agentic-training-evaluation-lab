@@ -62,11 +62,16 @@ ToolOutcomeKind = Literal["completed", "denied", "invalid", "failed"]
 
 @dataclass(frozen=True)
 class Observation:
+    """Lo que el patrón ve de una llamada: estado, resultado y el id de evidencia citable."""
+
     call_id: uuid.UUID
     tool: str
     status: ToolOutcomeKind
     result: Any
     error_class: str | None = None
+    # event_id del `tool.completed`; es lo que una respuesta puede citar como evidencia.
+    evidence_id: uuid.UUID | None = None
+    reason_codes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

@@ -2,7 +2,7 @@
 
 Laboratorio para medir éxito, herramientas, argumentos, evidencia, recuperación, latencia y coste de sistemas agénticos mediante experimentos reproducibles.
 
-**Estado: M0–M3 y parte de M4: contratos del runner, baseline scripted offline, gateway de tools sobre fixtures declarativas con validación JSON Schema, allowlist y estado aislado por run, límites de pasos/llamadas/deadline, retries trazados sobre fallos inyectados, eventos sellados en `Trace`/`TraceEvent`, worker con leases y fencing token, suite determinística `deterministic-core@1.0.0` y perfil de métricas `core-metrics@1.0.0` con evaluaciones versionadas, y (M4) persistencia idempotente de eventos, redacción de secretos antes del digest, export verificable, replay estricto offline y spans OpenTelemetry correlacionados con la traza (opcionales; la evidencia no depende del collector). Todavía no hay dataset piloto de 14 casos (M5), benchmarks publicados ni resultados.**
+**Estado: M0–M3 y parte de M4: contratos del runner, baseline scripted offline, gateway de tools sobre fixtures declarativas con validación JSON Schema, allowlist y estado aislado por run, límites de pasos/llamadas/deadline, retries trazados sobre fallos inyectados, eventos sellados en `Trace`/`TraceEvent`, worker con leases y fencing token, suite determinística `deterministic-core@1.0.0` y perfil de métricas `core-metrics@1.0.0` con evaluaciones versionadas, y (M4) persistencia idempotente de eventos, redacción de secretos antes del digest, export verificable, replay estricto offline y spans OpenTelemetry correlacionados con la traza (opcionales; la evidencia no depende del collector). M5 (6.1): piloto sintético `agentic-benchmark-pilot@0.1.0` de 14 escenarios (dos por categoría) con lock de hashes y dos agentes scripted de prueba del harness. Todavía no hay resultados del piloto (6.2), patrones con modelo (ReAct, Planner/Executor), judge, retrieval con PGVector, dashboard ni comparaciones.**
 
 API disponible (localhost:8000; esquema OpenAPI en `/docs`):
 
@@ -14,6 +14,7 @@ API disponible (localhost:8000; esquema OpenAPI en `/docs`):
 | `GET /scenarios/{id}/versions/{version}/oracle` | Oráculo privado (evaluador, no runner) |
 | `POST /datasets`, `GET .../{id}/versions/{version}` | Dataset; `coverage_class` lo calcula el servidor |
 | `POST /benchmarks`, `GET .../{id}/versions/{version}` | Protocolo de evaluación sobre un dataset |
+| `POST /model-configurations`, `POST /agent-configurations`, `GET .../{id}/versions/{version}` | Configuraciones inmutables de modelo y de agente (patrón, parámetros, roles→modelo, tools); exigen `Idempotency-Key` |
 | `POST /experiments` | Crea un draft; exige `Idempotency-Key` |
 | `GET` / `PATCH /experiments/{id}` | Lee o edita un draft; editar uno sellado devuelve 409 |
 | `POST /experiments/{id}/seal` | Sella con manifest RFC 8785 + SHA-256; exige benchmark y agentes |
@@ -44,6 +45,7 @@ backend/                 Python 3.14.7 + uv (paquete `evallab`)
   src/evallab/api/       Control plane FastAPI: /health, /health/ready
   src/evallab/worker/    Worker: heartbeat, claim con lease + fencing token, /health
   src/evallab/runner/    Contratos, límites, sink en memoria, patrón scripted y gateway de tools
+  src/evallab/benchmarks/ Suites sintéticas declarativas, lock de hashes y CLI evallab-benchmark
   src/evallab/settings.py  Configuración por entorno y SandboxPolicy (red denegada)
   src/evallab/domain/    Máquinas de estados y vocabularios cerrados del design
   src/evallab/db/        Modelos SQLAlchemy, migraciones Alembic y `evallab-migrate`
@@ -99,6 +101,15 @@ $env:EVALLAB_REQUIRE_DB = "1"; uv run --locked --env-file ../.env pytest
 ```
 
 Los tests de integración crean una base de datos vacía y temporal por sesión en el servidor de `POSTGRES_*` (requiere `docker compose up --detach --wait db`), aplican las migraciones y la eliminan al terminar. Sin `EVALLAB_REQUIRE_DB=1` se omiten si PostgreSQL no está disponible; CI los exige.
+
+## Piloto sintético (M5)
+
+```powershell
+cd backend
+uv run --locked --env-file ../.env evallab-benchmark publish pilot   # publica y compara con locks/pilot.json
+```
+
+`agentic-benchmark-pilot@0.1.0` son 14 escenarios `dev` inventados (dos por categoría) sobre tools de lookup; no es el benchmark v1 de 70 casos ni sirve para afirmaciones estadísticas. Sus dos agentes son scripted: `pilot-scripted-reference` ejecuta la solución de referencia y `pilot-scripted-faulty` comete un error deliberado por escenario (tool prohibida, unidades erróneas, cita inventada, inyección obedecida...). Ambos prueban el harness y los evaluadores, no un LLM.
 
 ## Observabilidad (opcional)
 

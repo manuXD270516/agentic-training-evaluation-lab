@@ -42,7 +42,8 @@
 
 ## 6. M5 — First benchmark
 
-- [ ] 6.1 Crear piloto sintético de 14 escenarios, dos por categoría (versioned-benchmarks); verificar schemas, familias, oráculos y separación de vista pública/privada.
+- [x] 6.1 Crear piloto sintético de 14 escenarios, dos por categoría (versioned-benchmarks); verificar schemas, familias, oráculos y separación de vista pública/privada.
+  - Evidencia: pytest local (tests/test_pilot_definition.py, tests/integration/test_pilot.py y tests/integration/test_api_agents.py, 2026-10-01; 307 tests en verde): los 14 escenarios validan contra `ScenarioCreate`, son `dev`, dos por categoría, con slugs y `family_id` únicos; publicar en una base vacía da `coverage_class=pilot`, `category_counts` 2×7, `held-out` vacío, licencia y `synthetic`, y el lock calculado coincide con `locks/pilot.json`; republicar no crea filas ni cambia hashes; la vista pública de los 14 omite expected, qrels, fault_schedule, split, family_id y recovery (ni el fault_id ni la familia aparecen en el JSON) y `/oracle` los expone; con una repetición, `pilot-scripted-reference` obtiene `task_success=pass` en los 14 sin checks en `error` y `pilot-scripted-faulty` `fail` en los 14 con exactamente las dimensiones esperadas por escenario (p. ej. tool prohibida: sólo `policy`, raw_outcome `pass`). Agentes y modelos se publican por API con hash, réplica idempotente, 409 ante cambio de contenido y 422 por roles o refs inválidas.
 - [ ] 6.2 Ejecutar cinco repeticiones scripted por escenario y generar reporte descriptivo (metric-reporting); verificar todas las celdas, consumo, cobertura y etiqueta de piloto sin claims estadísticos.
 
 ## 7. M6 — ReAct

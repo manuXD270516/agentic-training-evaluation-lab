@@ -29,8 +29,8 @@ from evallab.runner.errors import (
     UnsupportedPatternError,
 )
 from evallab.runner.limits import Limits
+from evallab.runner.patterns import adapter_for
 from evallab.runner.replay import ReplayMismatchError, ReplayToolGateway
-from evallab.runner.scripted import adapter_for
 from evallab.runner.sink import MemoryEvent, MemoryTraceSink
 from evallab.schemas import ScenarioPublicOut
 
@@ -259,12 +259,15 @@ class _Run:
             )
             outcome = self._invoke(tools, call, call_id, requested, attempt)
             self._emit_outcome(call, call_id, requested, outcome, attempt, retries_left)
+        completed = outcome.kind == "completed" and bool(self.evidence)
         return Observation(
             call_id=call_id,
             tool=call.tool,
             status=outcome.kind,
             result=outcome.result,
             error_class=outcome.error_class,
+            evidence_id=self.evidence[-1].event_id if completed else None,
+            reason_codes=outcome.reason_codes,
         )
 
     def _invoke(
@@ -480,7 +483,7 @@ def _execute_agent(
         if mismatch is not None:
             return run.fail(ReplayMismatchError.error_class, mismatch)
     try:
-        adapter = adapter_for(agent)
+        adapter = adapter_for(agent, scenario)
     except RunnerError as exc:
         return run.fail(exc.error_class, exc.message)
     run.pattern, run.pattern_version = adapter.pattern, adapter.pattern_version

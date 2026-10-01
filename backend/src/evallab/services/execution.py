@@ -361,6 +361,23 @@ def claim_next_run(
     return _new_attempt(db, queued, number=1, worker_id=worker_id, lease_s=lease_s, now=now)
 
 
+def claim_run(
+    db: Session,
+    run_id: uuid.UUID,
+    *,
+    worker_id: str,
+    lease_s: float = DEFAULT_LEASE_S,
+    now: datetime | None = None,
+) -> Claim | None:
+    """Reclama una celda `queued` concreta (para ejecutar en el orden planificado)."""
+    now = now or datetime.now(UTC)
+    run = db.get(m.Run, run_id, with_for_update=True)
+    if run is None or run.status != RunStatus.QUEUED:
+        return None
+    _start_run(db, run, now)
+    return _new_attempt(db, run, number=1, worker_id=worker_id, lease_s=lease_s, now=now)
+
+
 # --- Fase 2: ejecutar ----------------------------------------------------------------------
 
 

@@ -1,0 +1,264 @@
+"""Definición declarativa de un benchmark y su publicación idempotente en el catálogo.
+
+Las identidades se derivan con UUIDv5 del nombre y la versión, de modo que el mismo contenido
+produce los mismos `content_hash` en cualquier entorno y una publicación repetida reutiliza las
+versiones existentes en vez de duplicarlas. Un contenido distinto bajo la misma identidad falla
+como en la API (versión publicada inmutable).
+"""
+
+from __future__ import annotations
+
+import uuid
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
+from functools import partial
+from typing import Any
+
+from sqlalchemy.orm import Session
+
+from evallab.canonical import canonical_digest
+from evallab.db import models as m
+from evallab.schemas import (
+    AgentConfigurationCreate,
+    BenchmarkCreate,
+    DatasetCreate,
+    DigestRef,
+    FixtureCreate,
+    ScenarioCreate,
+    ToolCreate,
+)
+from evallab.services import agents as agent_svc
+from evallab.services import catalog as svc
+from evallab.services.errors import VersionExistsError
+
+NAMESPACE = uuid.UUID("6f1c2d0e-6a51-5b7e-9c43-0d7c3b1e9a10")
+VERSION = "1.0.0"
+
+
+def stable_id(kind: str, name: str) -> uuid.UUID:
+    return uuid.uuid5(NAMESPACE, f"{kind}:{name}")
+
+
+@dataclass(frozen=True)
+class ToolDef:
+    name: str
+    input_schema: dict[str, Any]
+    output_schema: dict[str, Any]
+    effect_class: str
+    fixture: dict[str, Any] | None
+    timeout_ms: int = 1000
+    version: str = VERSION
+
+
+@dataclass(frozen=True)
+class AgentDef:
+    name: str
+    pattern: str
+    pattern_version: str
+    pattern_parameters: dict[str, Any]
+    tools: tuple[str, ...]
+    roles: tuple[tuple[str, uuid.UUID, str], ...] = ()
+    prompt_hash: str | None = None
+    version: str = VERSION
+
+
+@dataclass(frozen=True)
+class Suite:
+    """Contenido completo de un dataset y su benchmark.
+
+    `scenarios` usa la forma de `ScenarioCreate` con nombres simbólicos: `tools` es una lista de
+    nombres de `ToolDef`, `environment.fixture_refs` se rellena con las fixtures de sus tools y
+    `retrieval.corpus_ref` nombra un corpus de `corpora`.
+    """
+
+    dataset_name: str
+    dataset_version: str
+    license: str
+    generator_version: str
+    tools: tuple[ToolDef, ...]
+    scenarios: tuple[dict[str, Any], ...]
+    corpora: Mapping[str, Any] = field(default_factory=dict)
+    agents: tuple[AgentDef, ...] = ()
+    benchmark: Mapping[str, Any] = field(default_factory=dict)
+    benchmark_version: str = VERSION
+
+
+@dataclass
+class Published:
+    fixtures: dict[str, str] = field(default_factory=dict)
+    tools: dict[str, m.ToolDefinition] = field(default_factory=dict)
+    scenarios: list[m.Scenario] = field(default_factory=list)
+    agents: dict[str, m.AgentConfiguration] = field(default_factory=dict)
+    dataset: m.Dataset | None = None
+    benchmark: m.Benchmark | None = None
+
+    def lock(self) -> dict[str, Any]:
+        """Hashes publicados: cualquier cambio de contenido cambia este documento."""
+        assert self.dataset is not None and self.benchmark is not None
+        return {
+            "fixtures": dict(sorted(self.fixtures.items())),
+            "tools": {n: t.content_hash for n, t in sorted(self.tools.items())},
+            "scenarios": {str(s.slug): s.content_hash for s in self.scenarios},
+            "agents": {n: a.content_hash for n, a in sorted(self.agents.items())},
+            "dataset": {
+                "id": str(self.dataset.id),
+                "version": self.dataset.version,
+                "content_hash": self.dataset.content_hash,
+                "coverage_class": self.dataset.coverage_class,
+            },
+            "benchmark": {
+                "id": str(self.benchmark.id),
+                "version": self.benchmark.version,
+                "content_hash": self.benchmark.content_hash,
+            },
+        }
+
+
+def _existing[Row](
+    publish: Callable[[], Row], load: Callable[[], Row | None], hash_of: Callable[[Row], str]
+) -> Row:
+    """Publica o reutiliza una versión ya publicada con idéntico contenido."""
+    try:
+        return publish()
+    except VersionExistsError as exc:
+        row = load()
+        if row is None or not exc.details.get("same_content"):
+            raise
+        assert hash_of(row) == exc.details.get("content_hash")
+        return row
+
+
+def _content_hash(row: Any) -> str:
+    return str(row.content_hash)
+
+
+def _ref(row: m.ToolDefinition | m.Scenario | m.Dataset) -> DigestRef:
+    return DigestRef(id=row.id, version=row.version, content_hash=row.content_hash)
+
+
+def _scenario_payload(
+    raw: Mapping[str, Any], published: Published, corpora: Mapping[str, str]
+) -> ScenarioCreate:
+    data = dict(raw)
+    tools = [published.tools[name] for name in data.get("tools", [])]
+    environment = dict(data.get("environment") or {})
+    fixtures = sorted({t.fixture_hash for t in tools if t.fixture_hash is not None})
+    environment["fixture_refs"] = fixtures
+    data["environment"] = environment
+    data["tools"] = [_ref(t).model_dump(mode="json") for t in tools]
+    if data.get("retrieval") is not None:
+        retrieval = dict(data["retrieval"])
+        retrieval["corpus_ref"] = corpora[str(retrieval["corpus_ref"])]
+        data["retrieval"] = retrieval
+    data["id"] = str(stable_id("scenario", str(data["slug"])))
+    data.setdefault("version", VERSION)
+    return ScenarioCreate.model_validate(data)
+
+
+def publish_suite(db: Session, suite: Suite) -> Published:
+    published = Published()
+    corpora: dict[str, str] = {}
+    for name, payload in sorted(suite.corpora.items()):
+        corpus = svc.publish_fixture(db, FixtureCreate(name=f"corpus-{name}", payload=payload))
+        corpora[name] = corpus.content_hash
+        published.fixtures[f"corpus:{name}"] = corpus.content_hash
+
+    for tool in suite.tools:
+        fixture_hash = None
+        if tool.fixture is not None:
+            fixture = svc.publish_fixture(
+                db, FixtureCreate(name=f"{tool.name}-fixture", payload=tool.fixture)
+            )
+            fixture_hash = fixture.content_hash
+            published.fixtures[f"tool:{tool.name}"] = fixture_hash
+        data = ToolCreate(
+            id=stable_id("tool", tool.name),
+            version=tool.version,
+            name=tool.name,
+            input_schema=tool.input_schema,
+            output_schema=tool.output_schema,
+            effect_class=tool.effect_class,
+            timeout_ms=tool.timeout_ms,
+            fixture_hash=fixture_hash,
+        )
+        published.tools[tool.name] = _existing(
+            partial(svc.publish_tool, db, data),
+            partial(db.get, m.ToolDefinition, (data.id, data.version)),
+            _content_hash,
+        )
+
+    for raw in suite.scenarios:
+        scenario = _scenario_payload(raw, published, corpora)
+        published.scenarios.append(
+            _existing(
+                partial(svc.publish_scenario, db, scenario),
+                partial(db.get, m.Scenario, (scenario.id, scenario.version)),
+                _content_hash,
+            )
+        )
+
+    dataset = DatasetCreate(
+        id=stable_id("dataset", suite.dataset_name),
+        version=suite.dataset_version,
+        name=suite.dataset_name,
+        license=suite.license,
+        generator_version=suite.generator_version,
+        scenario_refs=[_ref(s) for s in published.scenarios],
+        fixture_refs=sorted({h for k, h in published.fixtures.items() if k.startswith("tool:")}),
+        corpus_refs=sorted(corpora.values()),
+    )
+    published.dataset = _existing(
+        lambda: svc.publish_dataset(db, dataset),
+        lambda: db.get(m.Dataset, (dataset.id, dataset.version)),
+        _content_hash,
+    )
+
+    bench = BenchmarkCreate(
+        id=stable_id("benchmark", suite.dataset_name),
+        version=suite.benchmark_version,
+        dataset_ref=_ref(published.dataset),
+        **dict(suite.benchmark),
+    )
+    published.benchmark = _existing(
+        lambda: svc.publish_benchmark(db, bench),
+        lambda: db.get(m.Benchmark, (bench.id, bench.version)),
+        _content_hash,
+    )
+
+    for agent in suite.agents:
+        published.agents[agent.name] = publish_agent_def(db, agent, published.tools)
+    return published
+
+
+def publish_agent_def(
+    db: Session, agent: AgentDef, tools: Mapping[str, m.ToolDefinition]
+) -> m.AgentConfiguration:
+    data = AgentConfigurationCreate.model_validate(
+        {
+            "id": str(stable_id("agent", agent.name)),
+            "version": agent.version,
+            "pattern": agent.pattern,
+            "pattern_version": agent.pattern_version,
+            "prompt_hash": agent.prompt_hash,
+            "pattern_parameters": agent.pattern_parameters,
+            "roles": [
+                {"role": role, "model": {"id": str(model_id), "version": version}}
+                for role, model_id, version in agent.roles
+            ],
+            "tools": [_ref(tools[name]).model_dump(mode="json") for name in agent.tools],
+        }
+    )
+    row: m.AgentConfiguration = _existing(
+        partial(agent_svc.publish_agent, db, data),
+        partial(db.get, m.AgentConfiguration, (data.id, data.version)),
+        _content_hash,
+    )
+    return row
+
+
+def lock_digest(lock: Mapping[str, Any]) -> str:
+    return canonical_digest(dict(lock))
+
+
+def scenario_slugs(suite: Suite) -> Sequence[str]:
+    return [str(s["slug"]) for s in suite.scenarios]

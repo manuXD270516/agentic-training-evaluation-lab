@@ -449,6 +449,79 @@ class BenchmarkCreate(StrictModel):
     content_hash: Digest | None = None
 
 
+class ModelConfigurationCreate(StrictModel):
+    """Modelo por rol. `resolved_revision=None` declara revisión desconocida."""
+
+    id: uuid.UUID | None = None
+    version: Version
+    provider: Slug
+    requested_model: str = Field(min_length=1, max_length=200)
+    resolved_revision: str | None = Field(default=None, min_length=1, max_length=200)
+    temperature: float | None = Field(default=None, ge=0, le=2)
+    seed_support: Literal["supported", "unsupported", "unknown"]
+    max_tokens: int | None = Field(default=None, ge=1)
+    price_snapshot_ref: Digest | None = None
+    content_hash: Digest | None = None
+
+
+class ModelConfigurationOut(BaseModel):
+    id: uuid.UUID
+    version: str
+    provider: str
+    requested_model: str
+    resolved_revision: str | None
+    temperature: str | None
+    seed_support: str
+    max_tokens: int | None
+    price_snapshot_ref: str | None
+    content_hash: str
+    created_at: datetime
+
+
+class AgentRoleRef(StrictModel):
+    role: Literal["executor", "planner"]
+    model: VersionRef
+
+
+class AgentConfigurationCreate(StrictModel):
+    id: uuid.UUID | None = None
+    version: Version
+    pattern: Literal["scripted", "react", "planner_executor"]
+    pattern_version: Version
+    prompt_hash: Digest | None = None
+    pattern_parameters: JsonObject = Field(default_factory=dict)
+    roles: list[AgentRoleRef] = Field(default_factory=list)
+    tools: list[DigestRef] = Field(default_factory=list)
+    content_hash: Digest | None = None
+
+    @model_validator(mode="after")
+    def _roles(self) -> Self:
+        names = [r.role for r in self.roles]
+        if len(set(names)) != len(names):
+            raise ValueError("roles repetidos")
+        required = {"scripted": set(), "react": {"executor"}}.get(
+            self.pattern, {"planner", "executor"}
+        )
+        if set(names) != required:
+            raise ValueError(f"el patrón {self.pattern} exige los roles {sorted(required)}")
+        if len({(t.id, t.version) for t in self.tools}) != len(self.tools):
+            raise ValueError("tools contiene referencias duplicadas")
+        return self
+
+
+class AgentConfigurationOut(BaseModel):
+    id: uuid.UUID
+    version: str
+    pattern: str
+    pattern_version: str
+    prompt_hash: str | None
+    pattern_parameters: JsonObject
+    roles: list[JsonObject]
+    tools: list[JsonObject]
+    content_hash: str
+    created_at: datetime
+
+
 class BenchmarkOut(BaseModel):
     id: uuid.UUID
     version: str
