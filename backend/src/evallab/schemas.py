@@ -281,6 +281,34 @@ class ExpectedSpec(StrictModel):
         return self
 
 
+RUBRIC_REF = r"^[a-z0-9-]+@(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$"
+
+
+class JudgeSpec(StrictModel):
+    """Dimensión subjetiva para el judge auxiliar; exige justificar la falta de oráculo."""
+
+    dimension: str = Field(min_length=1, max_length=64)
+    rubric_ref: str = Field(pattern=RUBRIC_REF)
+    deterministic_unavailable_reason: str = Field(min_length=10, max_length=500)
+
+    @model_validator(mode="after")
+    def _known_rubric(self) -> Self:
+        from evallab.evaluation.judge import rubric_for
+
+        rubric = rubric_for(self.rubric_ref)
+        if rubric is None:
+            raise ValueError(f"rúbrica desconocida: {self.rubric_ref}")
+        if rubric.dimension != self.dimension:
+            raise ValueError("la dimensión no coincide con la de la rúbrica")
+        return self
+
+
+class EvaluationCreate(StrictModel):
+    """Cuerpo opcional de POST /runs/{id}/evaluations: modelo del judge auxiliar."""
+
+    judge_model: VersionRef | None = None
+
+
 class EvaluationSpec(StrictModel):
     required_checks: list[
         Literal[
@@ -296,6 +324,7 @@ class EvaluationSpec(StrictModel):
     ] = Field(min_length=1)
     applicable_metrics: list[str] = Field(min_length=1)
     suite_ref: DigestRef | None = None
+    judge: JudgeSpec | None = None
 
     @model_validator(mode="after")
     def _metrics(self) -> Self:

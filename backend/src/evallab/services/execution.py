@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import contextlib
 import uuid
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, cast
@@ -104,8 +104,12 @@ def _model_snapshot(db: Session, role: m.AgentRole) -> ModelSnapshot | None:
     model = db.get(m.ModelConfiguration, (role.model_id, role.model_version))
     if model is None:
         return None
+    return model_snapshot_for(db, model, role.role)
+
+
+def model_snapshot_for(db: Session, model: m.ModelConfiguration, role: str) -> ModelSnapshot:
     return ModelSnapshot(
-        role=role.role,
+        role=role,
         id=model.id,
         version=model.version,
         content_hash=model.content_hash,
@@ -150,11 +154,16 @@ def _fixture_payload(db: Session) -> Callable[[str], Any | None]:
     return load
 
 
+def provider_gateway(db: Session, models: Mapping[str, ModelSnapshot]) -> ProviderModelGateway:
+    """Gateway con los proveedores habilitados (fixture siempre; live sólo si se configura)."""
+    return ProviderModelGateway(models, default_providers(_fixture_payload(db)))
+
+
 def model_gateway(db: Session, agent: AgentSnapshot) -> ModelGateway:
     """Scripted no tiene modelo; el resto usa los proveedores habilitados (fixture por defecto)."""
     if agent.pattern == "scripted":
         return DeniedModelGateway()
-    return ProviderModelGateway(agent.models, default_providers(_fixture_payload(db)))
+    return provider_gateway(db, agent.models)
 
 
 def _scenario_tools(db: Session, scenario: m.Scenario) -> list[m.ToolDefinition]:

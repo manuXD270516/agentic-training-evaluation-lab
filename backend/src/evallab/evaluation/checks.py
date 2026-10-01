@@ -30,6 +30,8 @@ OPERATOR_DIMENSIONS: Mapping[str, Dimension] = {
 OPERATOR_VERSION = "1.0.0"
 DEFAULT_ABSTENTION_PATH = "/abstained"
 _MISSING = object()
+# Centinela público: resultado de resolve_pointer cuando el pointer no existe.
+MISSING = _MISSING
 
 
 @dataclass(frozen=True)
