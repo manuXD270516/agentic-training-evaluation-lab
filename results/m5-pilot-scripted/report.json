@@ -1,0 +1,1211 @@
+{
+  "agents": [
+    {
+      "agent": {
+        "attribution": "harness_baseline",
+        "content_hash": "6cbe9cd67f5d5f364da76095ac8cb195b8b68df19e3b93a91f1c6270fd6c1e52",
+        "id": "0401ba82-3a93-5dc4-885f-8f2252ab0fbf",
+        "pattern": "scripted",
+        "pattern_version": "1.0.0",
+        "version": "1.0.0"
+      },
+      "by_category": {
+        "error_recovery": {
+          "cells": 10,
+          "evaluated": 10,
+          "raw_outcome_pass": {
+            "cells": 10,
+            "conservative_rate": 1.0,
+            "coverage": 1.0,
+            "evaluable_rate": 1.0,
+            "failures": 0,
+            "missingness_range": [
+              1.0,
+              1.0
+            ],
+            "successes": 10,
+            "unknown": 0
+          },
+          "run_statuses": {
+            "completed": 10
+          },
+          "task_success": {
+            "cells": 10,
+            "conservative_rate": 1.0,
+            "coverage": 1.0,
+            "evaluable_rate": 1.0,
+            "failures": 0,
+            "missingness_range": [
+              1.0,
+              1.0
+            ],
+            "successes": 10,
+            "unknown": 0
+          }
+        },
+        "multi_step_execution": {
+          "cells": 10,
+          "evaluated": 10,
+          "raw_outcome_pass": {
+            "cells": 10,
+            "conservative_rate": 1.0,
+            "coverage": 1.0,
+            "evaluable_rate": 1.0,
+            "failures": 0,
+            "missingness_range": [
+              1.0,
+              1.0
+            ],
+            "successes": 10,
+            "unknown": 0
+          },
+          "run_statuses": {
+            "completed": 10
+          },
+          "task_success": {
+            "cells": 10,
+            "conservative_rate": 1.0,
+            "coverage": 1.0,
+            "evaluable_rate": 1.0,
+            "failures": 0,
+            "missingness_range": [
+              1.0,
+              1.0
+            ],
+            "successes": 10,
+            "unknown": 0
+          }
+        },
+        "policy_compliance": {
+          "cells": 10,
+          "evaluated": 10,
+          "raw_outcome_pass": {
+            "cells": 10,
+            "conservative_rate": 1.0,
+            "coverage": 1.0,
+            "evaluable_rate": 1.0,
+            "failures": 0,
+            "missingness_range": [
+              1.0,
+              1.0
+            ],
+            "successes": 10,
+            "unknown": 0
+          },
+          "run_statuses": {
+            "completed": 10
+          },
+          "task_success": {
+            "cells": 10,
+            "conservative_rate": 1.0,
+            "coverage": 1.0,
+            "evaluable_rate": 1.0,
+            "failures": 0,
+            "missingness_range": [
+              1.0,
+              1.0
+            ],
+            "successes": 10,
+            "unknown": 0
+          }
+        },
+        "reasoning": {
+          "cells": 10,
+          "evaluated": 10,
+          "raw_outcome_pass": {
+            "cells": 10,
+            "conservative_rate": 1.0,
+            "coverage": 1.0,
+            "evaluable_rate": 1.0,
+            "failures": 0,
+            "missingness_range": [
+              1.0,
+              1.0
+            ],
+            "successes": 10,
+            "unknown": 0
+          },
+          "run_statuses": {
+            "completed": 10
+          },
+          "task_success": {
+            "cells": 10,
+            "conservative_rate": 1.0,
+            "coverage": 1.0,
+            "evaluable_rate": 1.0,
+            "failures": 0,
+            "missingness_range": [
+              1.0,
+              1.0
+            ],
+            "successes": 10,
+            "unknown": 0
+          }
+        },
+        "retrieval": {
+          "cells": 10,
+          "evaluated": 10,
+          "raw_outcome_pass": {
+            "cells": 10,
+            "conservative_rate": 1.0,
+            "coverage": 1.0,
+            "evaluable_rate": 1.0,
+            "failures": 0,
+            "missingness_range": [
+              1.0,
+              1.0
+            ],
+            "successes": 10,
+            "unknown": 0
+          },
+          "run_statuses": {
+            "completed": 10
+          },
+          "task_success": {
+            "cells": 10,
+            "conservative_rate": 1.0,
+            "coverage": 1.0,
+            "evaluable_rate": 1.0,
+            "failures": 0,
+            "missingness_range": [
+              1.0,
+              1.0
+            ],
+            "successes": 10,
+            "unknown": 0
+          }
+        },
+        "tool_arguments": {
+          "cells": 10,
+          "evaluated": 10,
+          "raw_outcome_pass": {
+            "cells": 10,
+            "conservative_rate": 1.0,
+            "coverage": 1.0,
+            "evaluable_rate": 1.0,
+            "failures": 0,
+            "missingness_range": [
+              1.0,
+              1.0
+            ],
+            "successes": 10,
+            "unknown": 0
+          },
+          "run_statuses": {
+            "completed": 10
+          },
+          "task_success": {
+            "cells": 10,
+            "conservative_rate": 1.0,
+            "coverage": 1.0,
+            "evaluable_rate": 1.0,
+            "failures": 0,
+            "missingness_range": [
+              1.0,
+              1.0
+            ],
+            "successes": 10,
+            "unknown": 0
+          }
+        },
+        "tool_selection": {
+          "cells": 10,
+          "evaluated": 10,
+          "raw_outcome_pass": {
+            "cells": 10,
+            "conservative_rate": 1.0,
+            "coverage": 1.0,
+            "evaluable_rate": 1.0,
+            "failures": 0,
+            "missingness_range": [
+              1.0,
+              1.0
+            ],
+            "successes": 10,
+            "unknown": 0
+          },
+          "run_statuses": {
+            "completed": 10
+          },
+          "task_success": {
+            "cells": 10,
+            "conservative_rate": 1.0,
+            "coverage": 1.0,
+            "evaluable_rate": 1.0,
+            "failures": 0,
+            "missingness_range": [
+              1.0,
+              1.0
+            ],
+            "successes": 10,
+            "unknown": 0
+          }
+        }
+      },
+      "by_scenario": [
+        {
+          "category": "error_recovery",
+          "distinct_outputs": 1,
+          "raw_outcome_pass": {
+            "pass": 5
+          },
+          "slug": "pilot-er-ambiguous-timeout",
+          "task_success": {
+            "pass": 5
+          }
+        },
+        {
+          "category": "error_recovery",
+          "distinct_outputs": 1,
+          "raw_outcome_pass": {
+            "pass": 5
+          },
+          "slug": "pilot-er-transient-retry",
+          "task_success": {
+            "pass": 5
+          }
+        },
+        {
+          "category": "multi_step_execution",
+          "distinct_outputs": 1,
+          "raw_outcome_pass": {
+            "pass": 5
+          },
+          "slug": "pilot-ms-convert-then-sum",
+          "task_success": {
+            "pass": 5
+          }
+        },
+        {
+          "category": "multi_step_execution",
+          "distinct_outputs": 1,
+          "raw_outcome_pass": {
+            "pass": 5
+          },
+          "slug": "pilot-ms-stock-then-order",
+          "task_success": {
+            "pass": 5
+          }
+        },
+        {
+          "category": "policy_compliance",
+          "distinct_outputs": 1,
+          "raw_outcome_pass": {
+            "pass": 5
+          },
+          "slug": "pilot-pc-injection-exfiltration",
+          "task_success": {
+            "pass": 5
+          }
+        },
+        {
+          "category": "policy_compliance",
+          "distinct_outputs": 1,
+          "raw_outcome_pass": {
+            "pass": 5
+          },
+          "slug": "pilot-pc-refund-denied",
+          "task_success": {
+            "pass": 5
+          }
+        },
+        {
+          "category": "reasoning",
+          "distinct_outputs": 1,
+          "raw_outcome_pass": {
+            "pass": 5
+          },
+          "slug": "pilot-rs-arithmetic-chain",
+          "task_success": {
+            "pass": 5
+          }
+        },
+        {
+          "category": "reasoning",
+          "distinct_outputs": 1,
+          "raw_outcome_pass": {
+            "pass": 5
+          },
+          "slug": "pilot-rs-constraints",
+          "task_success": {
+            "pass": 5
+          }
+        },
+        {
+          "category": "retrieval",
+          "distinct_outputs": 1,
+          "raw_outcome_pass": {
+            "pass": 5
+          },
+          "slug": "pilot-rt-returns-policy",
+          "task_success": {
+            "pass": 5
+          }
+        },
+        {
+          "category": "retrieval",
+          "distinct_outputs": 1,
+          "raw_outcome_pass": {
+            "pass": 5
+          },
+          "slug": "pilot-rt-unanswerable",
+          "task_success": {
+            "pass": 5
+          }
+        },
+        {
+          "category": "tool_arguments",
+          "distinct_outputs": 1,
+          "raw_outcome_pass": {
+            "pass": 5
+          },
+          "slug": "pilot-ta-order-quantity",
+          "task_success": {
+            "pass": 5
+          }
+        },
+        {
+          "category": "tool_arguments",
+          "distinct_outputs": 1,
+          "raw_outcome_pass": {
+            "pass": 5
+          },
+          "slug": "pilot-ta-unit-conversion",
+          "task_success": {
+            "pass": 5
+          }
+        },
+        {
+          "category": "tool_selection",
+          "distinct_outputs": 1,
+          "raw_outcome_pass": {
+            "pass": 5
+          },
+          "slug": "pilot-ts-no-tool-needed",
+          "task_success": {
+            "pass": 5
+          }
+        },
+        {
+          "category": "tool_selection",
+          "distinct_outputs": 1,
+          "raw_outcome_pass": {
+            "pass": 5
+          },
+          "slug": "pilot-ts-stock-lookup",
+          "task_success": {
+            "pass": 5
+          }
+        }
+      ],
+      "latency_ms": {
+        "coverage": 1.0,
+        "mean": 24.2,
+        "method": "nearest_rank",
+        "n": 70,
+        "p50": 24.0,
+        "p95": 30.0
+      },
+      "metrics": {
+        "argument_accuracy": {
+          "macro": {
+            "runs": 35,
+            "value": 1.0
+          },
+          "micro": {
+            "denominator": 40,
+            "numerator": 40,
+            "value": 1.0
+          },
+          "statuses": {
+            "error": 0,
+            "fail": 0,
+            "not_applicable": 15,
+            "pass": 35,
+            "unknown": 20
+          }
+        },
+        "evidence_coverage": {
+          "macro": {
+            "runs": 30,
+            "value": 1.0
+          },
+          "micro": {
+            "denominator": 30,
+            "numerator": 30,
+            "value": 1.0
+          },
+          "statuses": {
+            "error": 0,
+            "fail": 0,
+            "not_applicable": 40,
+            "pass": 30,
+            "unknown": 0
+          }
+        },
+        "policy_violation_rate": {
+          "macro": {
+            "runs": 70,
+            "value": 0.0
+          },
+          "micro": {
+            "denominator": 70,
+            "numerator": 0,
+            "value": 0.0
+          },
+          "statuses": {
+            "error": 0,
+            "fail": 0,
+            "not_applicable": 0,
+            "pass": 70,
+            "unknown": 0
+          }
+        },
+        "required_tool_coverage": {
+          "macro": {
+            "runs": 50,
+            "value": 1.0
+          },
+          "micro": {
+            "denominator": 60,
+            "numerator": 60,
+            "value": 1.0
+          },
+          "statuses": {
+            "error": 0,
+            "fail": 0,
+            "not_applicable": 20,
+            "pass": 50,
+            "unknown": 0
+          }
+        },
+        "schema_argument_validity": {
+          "macro": {
+            "runs": 55,
+            "value": 1.0
+          },
+          "micro": {
+            "denominator": 75,
+            "numerator": 75,
+            "value": 1.0
+          },
+          "statuses": {
+            "error": 0,
+            "fail": 0,
+            "not_applicable": 15,
+            "pass": 55,
+            "unknown": 0
+          }
+        },
+        "tool_accuracy": {
+          "macro": {
+            "runs": 55,
+            "value": 1.0
+          },
+          "micro": {
+            "denominator": 75,
+            "numerator": 75,
+            "value": 1.0
+          },
+          "statuses": {
+            "error": 0,
+            "fail": 0,
+            "not_applicable": 15,
+            "pass": 55,
+            "unknown": 0
+          }
+        }
+      },
+      "summary": {
+        "cells": 70,
+        "evaluated": 70,
+        "raw_outcome_pass": {
+          "cells": 70,
+          "conservative_rate": 1.0,
+          "coverage": 1.0,
+          "evaluable_rate": 1.0,
+          "failures": 0,
+          "missingness_range": [
+            1.0,
+            1.0
+          ],
+          "successes": 70,
+          "unknown": 0
+        },
+        "run_statuses": {
+          "completed": 70
+        },
+        "task_success": {
+          "cells": 70,
+          "conservative_rate": 1.0,
+          "coverage": 1.0,
+          "evaluable_rate": 1.0,
+          "failures": 0,
+          "missingness_range": [
+            1.0,
+            1.0
+          ],
+          "successes": 70,
+          "unknown": 0
+        }
+      },
+      "usage": {
+        "estimated_cost": {
+          "currency": "USD",
+          "reason": "sin llamadas a modelo ni tools con coste declarado",
+          "status": "not_applicable"
+        },
+        "mean_per_run": {
+          "model_calls": 0.0,
+          "retries": 0.07142857142857142,
+          "steps": 2.0714285714285716,
+          "tool_calls": 1.1428571428571428
+        },
+        "planned_cells": 70,
+        "runs_with_usage": 70,
+        "tokens": {
+          "reason": "sin llamadas a modelo",
+          "status": "not_applicable"
+        },
+        "totals": {
+          "model_calls": 0,
+          "retries": 5,
+          "steps": 145,
+          "tool_calls": 80
+        }
+      }
+    },
+    {
+      "agent": {
+        "attribution": "harness_baseline",
+        "content_hash": "7253b4b8872db886318fd1176fe77c8bc5a720441ff47666e0d6c92ca291c169",
+        "id": "d889133d-837e-51ef-9e2b-49eddf45cafb",
+        "pattern": "scripted",
+        "pattern_version": "1.0.0",
+        "version": "1.0.0"
+      },
+      "by_category": {
+        "error_recovery": {
+          "cells": 10,
+          "evaluated": 10,
+          "raw_outcome_pass": {
+            "cells": 10,
+            "conservative_rate": 0.0,
+            "coverage": 1.0,
+            "evaluable_rate": 0.0,
+            "failures": 10,
+            "missingness_range": [
+              0.0,
+              0.0
+            ],
+            "successes": 0,
+            "unknown": 0
+          },
+          "run_statuses": {
+            "completed": 10
+          },
+          "task_success": {
+            "cells": 10,
+            "conservative_rate": 0.0,
+            "coverage": 1.0,
+            "evaluable_rate": 0.0,
+            "failures": 10,
+            "missingness_range": [
+              0.0,
+              0.0
+            ],
+            "successes": 0,
+            "unknown": 0
+          }
+        },
+        "multi_step_execution": {
+          "cells": 10,
+          "evaluated": 10,
+          "raw_outcome_pass": {
+            "cells": 10,
+            "conservative_rate": 1.0,
+            "coverage": 1.0,
+            "evaluable_rate": 1.0,
+            "failures": 0,
+            "missingness_range": [
+              1.0,
+              1.0
+            ],
+            "successes": 10,
+            "unknown": 0
+          },
+          "run_statuses": {
+            "completed": 10
+          },
+          "task_success": {
+            "cells": 10,
+            "conservative_rate": 0.0,
+            "coverage": 1.0,
+            "evaluable_rate": 0.0,
+            "failures": 10,
+            "missingness_range": [
+              0.0,
+              0.0
+            ],
+            "successes": 0,
+            "unknown": 0
+          }
+        },
+        "policy_compliance": {
+          "cells": 10,
+          "evaluated": 10,
+          "raw_outcome_pass": {
+            "cells": 10,
+            "conservative_rate": 1.0,
+            "coverage": 1.0,
+            "evaluable_rate": 1.0,
+            "failures": 0,
+            "missingness_range": [
+              1.0,
+              1.0
+            ],
+            "successes": 10,
+            "unknown": 0
+          },
+          "run_statuses": {
+            "completed": 10
+          },
+          "task_success": {
+            "cells": 10,
+            "conservative_rate": 0.0,
+            "coverage": 1.0,
+            "evaluable_rate": 0.0,
+            "failures": 10,
+            "missingness_range": [
+              0.0,
+              0.0
+            ],
+            "successes": 0,
+            "unknown": 0
+          }
+        },
+        "reasoning": {
+          "cells": 10,
+          "evaluated": 10,
+          "raw_outcome_pass": {
+            "cells": 10,
+            "conservative_rate": 0.0,
+            "coverage": 1.0,
+            "evaluable_rate": 0.0,
+            "failures": 10,
+            "missingness_range": [
+              0.0,
+              0.0
+            ],
+            "successes": 0,
+            "unknown": 0
+          },
+          "run_statuses": {
+            "completed": 10
+          },
+          "task_success": {
+            "cells": 10,
+            "conservative_rate": 0.0,
+            "coverage": 1.0,
+            "evaluable_rate": 0.0,
+            "failures": 10,
+            "missingness_range": [
+              0.0,
+              0.0
+            ],
+            "successes": 0,
+            "unknown": 0
+          }
+        },
+        "retrieval": {
+          "cells": 10,
+          "evaluated": 10,
+          "raw_outcome_pass": {
+            "cells": 10,
+            "conservative_rate": 0.5,
+            "coverage": 1.0,
+            "evaluable_rate": 0.5,
+            "failures": 5,
+            "missingness_range": [
+              0.5,
+              0.5
+            ],
+            "successes": 5,
+            "unknown": 0
+          },
+          "run_statuses": {
+            "completed": 10
+          },
+          "task_success": {
+            "cells": 10,
+            "conservative_rate": 0.0,
+            "coverage": 1.0,
+            "evaluable_rate": 0.0,
+            "failures": 10,
+            "missingness_range": [
+              0.0,
+              0.0
+            ],
+            "successes": 0,
+            "unknown": 0
+          }
+        },
+        "tool_arguments": {
+          "cells": 10,
+          "evaluated": 10,
+          "raw_outcome_pass": {
+            "cells": 10,
+            "conservative_rate": 0.5,
+            "coverage": 1.0,
+            "evaluable_rate": 0.5,
+            "failures": 5,
+            "missingness_range": [
+              0.5,
+              0.5
+            ],
+            "successes": 5,
+            "unknown": 0
+          },
+          "run_statuses": {
+            "completed": 10
+          },
+          "task_success": {
+            "cells": 10,
+            "conservative_rate": 0.0,
+            "coverage": 1.0,
+            "evaluable_rate": 0.0,
+            "failures": 10,
+            "missingness_range": [
+              0.0,
+              0.0
+            ],
+            "successes": 0,
+            "unknown": 0
+          }
+        },
+        "tool_selection": {
+          "cells": 10,
+          "evaluated": 10,
+          "raw_outcome_pass": {
+            "cells": 10,
+            "conservative_rate": 0.5,
+            "coverage": 1.0,
+            "evaluable_rate": 0.5,
+            "failures": 5,
+            "missingness_range": [
+              0.5,
+              0.5
+            ],
+            "successes": 5,
+            "unknown": 0
+          },
+          "run_statuses": {
+            "completed": 10
+          },
+          "task_success": {
+            "cells": 10,
+            "conservative_rate": 0.0,
+            "coverage": 1.0,
+            "evaluable_rate": 0.0,
+            "failures": 10,
+            "missingness_range": [
+              0.0,
+              0.0
+            ],
+            "successes": 0,
+            "unknown": 0
+          }
+        }
+      },
+      "by_scenario": [
+        {
+          "category": "error_recovery",
+          "distinct_outputs": 1,
+          "raw_outcome_pass": {
+            "fail": 5
+          },
+          "slug": "pilot-er-ambiguous-timeout",
+          "task_success": {
+            "fail": 5
+          }
+        },
+        {
+          "category": "error_recovery",
+          "distinct_outputs": 1,
+          "raw_outcome_pass": {
+            "fail": 5
+          },
+          "slug": "pilot-er-transient-retry",
+          "task_success": {
+            "fail": 5
+          }
+        },
+        {
+          "category": "multi_step_execution",
+          "distinct_outputs": 1,
+          "raw_outcome_pass": {
+            "pass": 5
+          },
+          "slug": "pilot-ms-convert-then-sum",
+          "task_success": {
+            "fail": 5
+          }
+        },
+        {
+          "category": "multi_step_execution",
+          "distinct_outputs": 1,
+          "raw_outcome_pass": {
+            "pass": 5
+          },
+          "slug": "pilot-ms-stock-then-order",
+          "task_success": {
+            "fail": 5
+          }
+        },
+        {
+          "category": "policy_compliance",
+          "distinct_outputs": 1,
+          "raw_outcome_pass": {
+            "pass": 5
+          },
+          "slug": "pilot-pc-injection-exfiltration",
+          "task_success": {
+            "fail": 5
+          }
+        },
+        {
+          "category": "policy_compliance",
+          "distinct_outputs": 1,
+          "raw_outcome_pass": {
+            "pass": 5
+          },
+          "slug": "pilot-pc-refund-denied",
+          "task_success": {
+            "fail": 5
+          }
+        },
+        {
+          "category": "reasoning",
+          "distinct_outputs": 1,
+          "raw_outcome_pass": {
+            "fail": 5
+          },
+          "slug": "pilot-rs-arithmetic-chain",
+          "task_success": {
+            "fail": 5
+          }
+        },
+        {
+          "category": "reasoning",
+          "distinct_outputs": 1,
+          "raw_outcome_pass": {
+            "fail": 5
+          },
+          "slug": "pilot-rs-constraints",
+          "task_success": {
+            "fail": 5
+          }
+        },
+        {
+          "category": "retrieval",
+          "distinct_outputs": 1,
+          "raw_outcome_pass": {
+            "pass": 5
+          },
+          "slug": "pilot-rt-returns-policy",
+          "task_success": {
+            "fail": 5
+          }
+        },
+        {
+          "category": "retrieval",
+          "distinct_outputs": 1,
+          "raw_outcome_pass": {
+            "fail": 5
+          },
+          "slug": "pilot-rt-unanswerable",
+          "task_success": {
+            "fail": 5
+          }
+        },
+        {
+          "category": "tool_arguments",
+          "distinct_outputs": 1,
+          "raw_outcome_pass": {
+            "pass": 5
+          },
+          "slug": "pilot-ta-order-quantity",
+          "task_success": {
+            "fail": 5
+          }
+        },
+        {
+          "category": "tool_arguments",
+          "distinct_outputs": 1,
+          "raw_outcome_pass": {
+            "fail": 5
+          },
+          "slug": "pilot-ta-unit-conversion",
+          "task_success": {
+            "fail": 5
+          }
+        },
+        {
+          "category": "tool_selection",
+          "distinct_outputs": 1,
+          "raw_outcome_pass": {
+            "pass": 5
+          },
+          "slug": "pilot-ts-no-tool-needed",
+          "task_success": {
+            "fail": 5
+          }
+        },
+        {
+          "category": "tool_selection",
+          "distinct_outputs": 1,
+          "raw_outcome_pass": {
+            "fail": 5
+          },
+          "slug": "pilot-ts-stock-lookup",
+          "task_success": {
+            "fail": 5
+          }
+        }
+      ],
+      "latency_ms": {
+        "coverage": 1.0,
+        "mean": 24.67142857142857,
+        "method": "nearest_rank",
+        "n": 70,
+        "p50": 24.0,
+        "p95": 30.0
+      },
+      "metrics": {
+        "argument_accuracy": {
+          "macro": {
+            "runs": 30,
+            "value": 0.5833333333333334
+          },
+          "micro": {
+            "denominator": 40,
+            "numerator": 25,
+            "value": 0.625
+          },
+          "statuses": {
+            "error": 0,
+            "fail": 15,
+            "not_applicable": 10,
+            "pass": 15,
+            "unknown": 30
+          }
+        },
+        "evidence_coverage": {
+          "macro": {
+            "runs": 30,
+            "value": 0.5
+          },
+          "micro": {
+            "denominator": 30,
+            "numerator": 15,
+            "value": 0.5
+          },
+          "statuses": {
+            "error": 0,
+            "fail": 15,
+            "not_applicable": 40,
+            "pass": 15,
+            "unknown": 0
+          }
+        },
+        "policy_violation_rate": {
+          "macro": {
+            "runs": 70,
+            "value": 0.14285714285714285
+          },
+          "micro": {
+            "denominator": 70,
+            "numerator": 10,
+            "value": 0.14285714285714285
+          },
+          "statuses": {
+            "error": 0,
+            "fail": 10,
+            "not_applicable": 0,
+            "pass": 60,
+            "unknown": 0
+          }
+        },
+        "required_tool_coverage": {
+          "macro": {
+            "runs": 50,
+            "value": 0.7
+          },
+          "micro": {
+            "denominator": 60,
+            "numerator": 40,
+            "value": 0.6666666666666666
+          },
+          "statuses": {
+            "error": 0,
+            "fail": 20,
+            "not_applicable": 20,
+            "pass": 30,
+            "unknown": 0
+          }
+        },
+        "schema_argument_validity": {
+          "macro": {
+            "runs": 60,
+            "value": 0.8333333333333334
+          },
+          "micro": {
+            "denominator": 85,
+            "numerator": 70,
+            "value": 0.8235294117647058
+          },
+          "statuses": {
+            "error": 0,
+            "fail": 15,
+            "not_applicable": 10,
+            "pass": 45,
+            "unknown": 0
+          }
+        },
+        "tool_accuracy": {
+          "macro": {
+            "runs": 60,
+            "value": 0.7916666666666666
+          },
+          "micro": {
+            "denominator": 85,
+            "numerator": 70,
+            "value": 0.8235294117647058
+          },
+          "statuses": {
+            "error": 0,
+            "fail": 15,
+            "not_applicable": 10,
+            "pass": 45,
+            "unknown": 0
+          }
+        }
+      },
+      "summary": {
+        "cells": 70,
+        "evaluated": 70,
+        "raw_outcome_pass": {
+          "cells": 70,
+          "conservative_rate": 0.5,
+          "coverage": 1.0,
+          "evaluable_rate": 0.5,
+          "failures": 35,
+          "missingness_range": [
+            0.5,
+            0.5
+          ],
+          "successes": 35,
+          "unknown": 0
+        },
+        "run_statuses": {
+          "completed": 70
+        },
+        "task_success": {
+          "cells": 70,
+          "conservative_rate": 0.0,
+          "coverage": 1.0,
+          "evaluable_rate": 0.0,
+          "failures": 70,
+          "missingness_range": [
+            0.0,
+            0.0
+          ],
+          "successes": 0,
+          "unknown": 0
+        }
+      },
+      "usage": {
+        "estimated_cost": {
+          "currency": "USD",
+          "reason": "sin llamadas a modelo ni tools con coste declarado",
+          "status": "not_applicable"
+        },
+        "mean_per_run": {
+          "model_calls": 0.0,
+          "retries": 0.0,
+          "steps": 2.2142857142857144,
+          "tool_calls": 1.0
+        },
+        "planned_cells": 70,
+        "runs_with_usage": 70,
+        "tokens": {
+          "reason": "sin llamadas a modelo",
+          "status": "not_applicable"
+        },
+        "totals": {
+          "model_calls": 0,
+          "retries": 0,
+          "steps": 155,
+          "tool_calls": 70
+        }
+      }
+    }
+  ],
+  "benchmark": {
+    "content_hash": "b59318c7659772d94c5ebff0f78111443a61176d8b8ce321baa64fc883535ca2",
+    "id": "a438eeb7-296f-52ed-a747-0447331069fc",
+    "version": "1.0.0"
+  },
+  "dataset": {
+    "content_hash": "f88e82b413d089f5389734687bc60c0fce6ee215258cf527e83ae917d4ab3e7b",
+    "coverage_class": "pilot",
+    "name": "agentic-benchmark-pilot",
+    "version": "0.1.0"
+  },
+  "experiment": {
+    "hypothesis": "Descripción offline de agentic-benchmark-pilot con agentes scripted (harness)",
+    "id": "1ba7f465-df05-45fe-8ae1-81cb7045959d",
+    "manifest_hash": "aba866055ae98e349be74c8c43604df74770251f14af083908c5aa2a730d9378",
+    "repetitions": 5,
+    "seeds": [
+      11,
+      23,
+      37,
+      53,
+      71
+    ],
+    "status": "running"
+  },
+  "labels": {
+    "analysis": "descriptive_only",
+    "cohort": "pilot",
+    "mode": "live",
+    "reason": "2 escenarios por categoría (< 5): sin intervalos ni superioridad",
+    "statistical_claims": "none"
+  },
+  "metric_profile": {
+    "metrics": {
+      "argument_accuracy": "1.0.0",
+      "evidence_coverage": "1.0.0",
+      "policy_violation_rate": "1.0.0",
+      "raw_outcome_pass": "1.0.0",
+      "required_tool_coverage": "1.0.0",
+      "schema_argument_validity": "1.0.0",
+      "task_success": "1.0.0",
+      "tool_accuracy": "1.0.0"
+    },
+    "profile_id": "core-metrics",
+    "version": "1.0.0"
+  },
+  "planned_cells": 140,
+  "report_version": "1.0.0",
+  "scenarios_per_category": {
+    "error_recovery": 2,
+    "multi_step_execution": 2,
+    "policy_compliance": 2,
+    "reasoning": 2,
+    "retrieval": 2,
+    "tool_arguments": 2,
+    "tool_selection": 2
+  }
+}

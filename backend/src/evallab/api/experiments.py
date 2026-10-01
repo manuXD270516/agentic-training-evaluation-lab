@@ -17,6 +17,7 @@ from evallab.schemas import (
 from evallab.services import execution as execution_svc
 from evallab.services import experiments as svc
 from evallab.services import replays as replay_svc
+from evallab.services import reports as report_svc
 from evallab.services import traces as trace_svc
 from evallab.services.errors import ExperimentNotSealedError
 from evallab.services.idempotency import run_idempotent
@@ -78,6 +79,13 @@ def get_manifest(request: Request, experiment_id: uuid.UUID) -> ManifestOut:
         return ManifestOut(
             experiment_id=exp.id, manifest_hash=exp.manifest_hash, manifest=exp.manifest
         )
+
+
+@router.get("/experiments/{experiment_id}/report")
+def get_report(request: Request, experiment_id: uuid.UUID) -> dict[str, Any]:
+    """Reporte descriptivo: N = celdas programadas, unknown y N/A explícitos, sin inferencia."""
+    with sessions(request).begin() as db:
+        return report_svc.experiment_report(db, experiment_id)
 
 
 @router.post(

@@ -2,7 +2,7 @@
 
 Laboratorio para medir éxito, herramientas, argumentos, evidencia, recuperación, latencia y coste de sistemas agénticos mediante experimentos reproducibles.
 
-**Estado: M0–M3 y parte de M4: contratos del runner, baseline scripted offline, gateway de tools sobre fixtures declarativas con validación JSON Schema, allowlist y estado aislado por run, límites de pasos/llamadas/deadline, retries trazados sobre fallos inyectados, eventos sellados en `Trace`/`TraceEvent`, worker con leases y fencing token, suite determinística `deterministic-core@1.0.0` y perfil de métricas `core-metrics@1.0.0` con evaluaciones versionadas, y (M4) persistencia idempotente de eventos, redacción de secretos antes del digest, export verificable, replay estricto offline y spans OpenTelemetry correlacionados con la traza (opcionales; la evidencia no depende del collector). M5 (6.1): piloto sintético `agentic-benchmark-pilot@0.1.0` de 14 escenarios (dos por categoría) con lock de hashes y dos agentes scripted de prueba del harness. Todavía no hay resultados del piloto (6.2), patrones con modelo (ReAct, Planner/Executor), judge, retrieval con PGVector, dashboard ni comparaciones.**
+**Estado: M0–M3 y parte de M4: contratos del runner, baseline scripted offline, gateway de tools sobre fixtures declarativas con validación JSON Schema, allowlist y estado aislado por run, límites de pasos/llamadas/deadline, retries trazados sobre fallos inyectados, eventos sellados en `Trace`/`TraceEvent`, worker con leases y fencing token, suite determinística `deterministic-core@1.0.0` y perfil de métricas `core-metrics@1.0.0` con evaluaciones versionadas, y (M4) persistencia idempotente de eventos, redacción de secretos antes del digest, export verificable, replay estricto offline y spans OpenTelemetry correlacionados con la traza (opcionales; la evidencia no depende del collector). M5 (6.1): piloto sintético `agentic-benchmark-pilot@0.1.0` de 14 escenarios (dos por categoría) con lock de hashes y dos agentes scripted de prueba del harness, ejecutado con 5 repeticiones y reporte descriptivo en [results/m5-pilot-scripted](results/m5-pilot-scripted/report.md) (mide el harness, no un LLM). Todavía no hay patrones con modelo (ReAct, Planner/Executor), judge, retrieval con PGVector, dashboard ni comparaciones.**
 
 API disponible (localhost:8000; esquema OpenAPI en `/docs`):
 
@@ -19,6 +19,7 @@ API disponible (localhost:8000; esquema OpenAPI en `/docs`):
 | `GET` / `PATCH /experiments/{id}` | Lee o edita un draft; editar uno sellado devuelve 409 |
 | `POST /experiments/{id}/seal` | Sella con manifest RFC 8785 + SHA-256; exige benchmark y agentes |
 | `GET /experiments/{id}/manifest` | Manifest sellado y su hash |
+| `GET /experiments/{id}/report` | Reporte descriptivo: N = celdas programadas, S/N, cobertura, rango de missingness, métricas micro/macro, consumo y latencia; sin afirmaciones estadísticas |
 | `POST /experiments/{id}/runs` | Encola una celda (202, `queued`); exige `Idempotency-Key` |
 | `GET /experiments/{id}/runs`, `GET /runs/{id}` | Consulta de celdas; el resultado aparece tras la ejecución |
 | `GET /runs/{id}/trace` | Eventos ordenados, digest y completeness de la traza sellada |
@@ -107,7 +108,10 @@ Los tests de integración crean una base de datos vacía y temporal por sesión 
 ```powershell
 cd backend
 uv run --locked --env-file ../.env evallab-benchmark publish pilot   # publica y compara con locks/pilot.json
+uv run --locked --env-file ../.env evallab-benchmark run pilot --repetitions 5 --out ../results/m5-pilot-scripted
 ```
+
+`run` sella un experimento con los dos agentes, ejecuta las 140 celdas con las fases del worker, las evalúa y escribe `report.json`/`report.md` con el manifest y el lock. El resultado registrado está en [results/](results/README.md).
 
 `agentic-benchmark-pilot@0.1.0` son 14 escenarios `dev` inventados (dos por categoría) sobre tools de lookup; no es el benchmark v1 de 70 casos ni sirve para afirmaciones estadísticas. Sus dos agentes son scripted: `pilot-scripted-reference` ejecuta la solución de referencia y `pilot-scripted-faulty` comete un error deliberado por escenario (tool prohibida, unidades erróneas, cita inventada, inyección obedecida...). Ambos prueban el harness y los evaluadores, no un LLM.
 

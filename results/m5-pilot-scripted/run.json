@@ -1,0 +1,23 @@
+{
+  "agents": {
+    "pilot-scripted-faulty": "d889133d-837e-51ef-9e2b-49eddf45cafb",
+    "pilot-scripted-reference": "0401ba82-3a93-5dc4-885f-8f2252ab0fbf"
+  },
+  "cells_executed": 140,
+  "cells_planned": 140,
+  "evallab_version": "0.1.0",
+  "experiment_id": "1ba7f465-df05-45fe-8ae1-81cb7045959d",
+  "finished_at": "2026-10-01T05:59:00.681820+00:00",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python": "3.14.7",
+  "repetitions": 5,
+  "seeds": [
+    11,
+    23,
+    37,
+    53,
+    71
+  ],
+  "suite": "pilot",
+  "wall_clock_s": 8.971
+}
