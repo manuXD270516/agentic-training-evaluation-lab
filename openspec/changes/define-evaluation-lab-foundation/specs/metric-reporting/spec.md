@@ -28,6 +28,10 @@ El sistema SHALL reportar denominadores, unknown, N/A, cobertura y subtotales co
 - **WHEN** el proveedor no devuelve tokens y no existe estimación declarada
 - **THEN** tokens/coste afectados quedan unknown y el total no se presenta como cero.
 
+#### Scenario: Judge consumption reported apart
+- **WHEN** un run se evalúa una o más veces con el judge auxiliar
+- **THEN** sus tokens, coste y latencia se informan con `scope=judge` aparte del consumo del agente, cuentan todas las evaluaciones con judge y el total agente + judge los incluye sin presentarlos como cero.
+
 #### Scenario: Partial experiment
 - **WHEN** hay 7 éxitos, 2 fallos y 1 unknown en 10 celdas
 - **THEN** se reporta éxito conservador 0.70, cobertura 0.90 y rango por missingness [0.70,0.80].

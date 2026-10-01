@@ -350,6 +350,96 @@ def _outputs_by_cell(cells: Sequence[Cell]) -> int:
     return len(digests)
 
 
+def judge_consumption(db: Session, cells: Sequence[Cell]) -> dict[str, Any]:
+    """Consumo del judge en TODAS las evaluaciones de las celdas (también reevaluaciones): es
+    gasto real aunque el reporte use la última evaluación. Nunca se suma al del agente."""
+    run_ids = [cell.run.id for cell in cells if cell.run is not None]
+    documents: list[dict[str, Any]] = []
+    if run_ids:
+        for evaluation in db.scalars(select(m.Evaluation).where(m.Evaluation.run_id.in_(run_ids))):
+            judge = (evaluation.report or {}).get("judge") if evaluation.report else None
+            if isinstance(judge, dict) and "usage" in judge:
+                documents.append(judge)
+    calls = len(documents)
+    if calls == 0:
+        return {
+            "calls": 0,
+            "tokens": {"status": "not_applicable", "reason": "sin llamadas al judge"},
+            "estimated_cost": {
+                "status": "not_applicable",
+                "currency": "USD",
+                "reason": "sin llamadas al judge",
+            },
+            "latency_ms": distribution([], 0),
+        }
+    usages = [
+        {
+            "model_calls": 1,
+            "tokens": {
+                "known_subtotal": doc["usage"].get("total_tokens") or 0,
+                "unknown_usage_calls": 0 if doc["usage"].get("total_tokens") is not None else 1,
+            },
+            "cost": {
+                "known_subtotal": doc["cost"].get("amount") or "0",
+                "unknown_cost_calls": 0 if doc["cost"].get("status") == "estimated" else 1,
+                "currency": doc["cost"].get("currency"),
+                "synthetic_price": doc["cost"].get("synthetic_price"),
+            },
+        }
+        for doc in documents
+    ]
+    return {
+        "calls": calls,
+        "statuses": dict(Counter(str(doc.get("status")) for doc in documents)),
+        **_tokens_and_cost(usages, calls),
+        "latency_ms": distribution(
+            [float(doc["latency_ms"]) for doc in documents if "latency_ms" in doc], calls
+        ),
+    }
+
+
+def _part_status(applicable: bool, unknown: bool, known: str) -> str:
+    if not applicable:
+        return "not_applicable"
+    return "unknown" if unknown else known
+
+
+def combine_consumption(agent: Mapping[str, Any], judge: Mapping[str, Any]) -> dict[str, Any]:
+    """Total = agente + judge. Una parte aplicable desconocida deja el total `unknown` con el
+    subtotal conocido visible; las partes N/A no suman."""
+    tokens_parts = [agent["tokens"], judge["tokens"]]
+    applicable = [p for p in tokens_parts if p.get("status") != "not_applicable"]
+    known_tokens = sum(int(p.get("known_subtotal") or 0) for p in applicable)
+    tokens_unknown = any(p.get("status") == "unknown" for p in applicable)
+    cost_parts = [agent["estimated_cost"], judge["estimated_cost"]]
+    costed = [p for p in cost_parts if p.get("status") != "not_applicable"]
+    known_cost = sum((Decimal(str(p.get("known_subtotal") or "0")) for p in costed), Decimal(0))
+    cost_unknown = any(p.get("status") == "unknown" for p in costed)
+    tokens_status = _part_status(bool(applicable), tokens_unknown, "observed")
+    cost_status = _part_status(bool(costed), cost_unknown, "estimated")
+    return {
+        "tokens": {
+            "status": tokens_status,
+            "total": known_tokens if tokens_status == "observed" else None,
+            "known_subtotal": known_tokens,
+            "parts": {
+                "agent": agent["tokens"].get("status"),
+                "judge": judge["tokens"].get("status"),
+            },
+        },
+        "estimated_cost": {
+            "status": cost_status,
+            "amount": format(known_cost, "f") if cost_status == "estimated" else None,
+            "known_subtotal": format(known_cost, "f"),
+            "synthetic_price": any(bool(p.get("synthetic_price")) for p in costed),
+            "parts": {
+                "agent": agent["estimated_cost"].get("status"),
+                "judge": judge["estimated_cost"].get("status"),
+            },
+        },
+    }
+
+
 def experiment_report(db: Session, experiment_id: uuid.UUID) -> dict[str, Any]:
     exp = db.get(m.Experiment, experiment_id)
     if exp is None:
@@ -375,6 +465,8 @@ def experiment_report(db: Session, experiment_id: uuid.UUID) -> dict[str, Any]:
     ):
         by_category = _group(agent_cells, lambda c: c.category)
         by_scenario = _group(agent_cells, lambda c: (c.slug, c.category))
+        usage = _usage(agent_cells)
+        judge = judge_consumption(db, agent_cells)
         agents_report.append(
             {
                 "agent": _agent_label(db, agent_id, version, agent_cells),
@@ -383,7 +475,10 @@ def experiment_report(db: Session, experiment_id: uuid.UUID) -> dict[str, Any]:
                 "metrics": {
                     metric: _metric_summary(agent_cells, metric) for metric in RATIO_METRICS
                 },
-                "usage": _usage(agent_cells),
+                "usage": usage,
+                # El judge se informa aparte (scope judge) y sólo se suma en `total_consumption`.
+                "judge_usage": judge,
+                "total_consumption": combine_consumption(usage, judge),
                 "latency_ms": distribution(
                     [float(c.latency_ms) for c in agent_cells if c.latency_ms is not None],
                     len(agent_cells),

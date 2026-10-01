@@ -30,20 +30,25 @@ def _success_row(label: str, summary: dict[str, Any]) -> str:
 
 def _tokens(tokens: dict[str, Any]) -> str:
     if tokens["status"] == "not_applicable":
-        return f"`not_applicable` ({tokens['reason']})"
+        return f"`not_applicable` ({tokens.get('reason', 'sin partes aplicables')})"
+    unknown = tokens.get("unknown_usage_calls")
+    suffix = f", llamadas sin uso {unknown}" if unknown is not None else ""
     return (
-        f"`{tokens['status']}`, total {_fmt(tokens['total'])}, subtotal conocido "
-        f"{tokens['known_subtotal']}, llamadas sin uso {tokens['unknown_usage_calls']}"
+        f"`{tokens['status']}`, total {_fmt(tokens.get('total'))}, subtotal conocido "
+        f"{tokens['known_subtotal']}{suffix}"
     )
 
 
 def _cost(cost: dict[str, Any]) -> str:
     if cost["status"] == "not_applicable":
-        return f"`not_applicable` ({cost['reason']})"
-    note = f" — {cost['reason']}" if cost.get("reason") else ""
+        return f"`not_applicable` ({cost.get('reason', 'sin partes aplicables')})"
+    reason = cost.get("reason") or (
+        "precio sintético: no es un coste real" if cost.get("synthetic_price") else None
+    )
+    note = f" — {reason}" if reason else ""
     return (
-        f"`{cost['status']}`, {_fmt(cost['amount'])} {cost['currency']} (subtotal conocido "
-        f"{cost['known_subtotal']}){note}"
+        f"`{cost['status']}`, {_fmt(cost.get('amount'))} {cost.get('currency', 'USD')} "
+        f"(subtotal conocido {cost['known_subtotal']}){note}"
     )
 
 
@@ -117,6 +122,11 @@ def render(report: dict[str, Any], *, title: str, names: dict[str, str] | None =
             f"- Totales: {usage['totals']}",
             f"- Tokens: {_tokens(usage['tokens'])}; coste estimado: "
             f"{_cost(usage['estimated_cost'])}",
+            f"- Judge (scope judge, no se suma al agente): {agent['judge_usage']['calls']} "
+            f"llamadas; tokens {_tokens(agent['judge_usage']['tokens'])}; coste "
+            f"{_cost(agent['judge_usage']['estimated_cost'])}",
+            f"- Total agente + judge: tokens {_tokens(agent['total_consumption']['tokens'])}; "
+            f"coste {_cost(agent['total_consumption']['estimated_cost'])}",
             f"- latency_ms del runner: n={latency['n']}, cobertura {_fmt(latency['coverage'])}, "
             f"media {_fmt(latency['mean'], 1)}, p50 {_fmt(latency['p50'], 1)}, "
             f"p95 {_fmt(latency['p95'], 1)} ({latency['method']})",
