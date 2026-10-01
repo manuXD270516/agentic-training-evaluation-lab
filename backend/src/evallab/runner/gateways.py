@@ -1,13 +1,15 @@
-from collections.abc import Sequence
-from typing import Any
+from collections.abc import Mapping
 
-from evallab.runner.contracts import AllowedTool
 from evallab.runner.errors import ModelNotAllowedError
+from evallab.runner.models import ModelRequest, ModelResult, ModelSnapshot
 
 
 class DeniedModelGateway:
     """Scripted no llama modelos; un generate accidental no se atribuye a un LLM."""
 
-    def generate(self, messages: Sequence[Any], tools: Sequence[AllowedTool]) -> Any:
-        del messages, tools
+    def models(self) -> Mapping[str, ModelSnapshot]:
+        return {}
+
+    def generate(self, request: ModelRequest) -> ModelResult:
+        del request
         raise ModelNotAllowedError("el patrón scripted no llama a ModelGateway")

@@ -10,10 +10,33 @@ from evallab.schemas import (
     AgentConfigurationOut,
     ModelConfigurationCreate,
     ModelConfigurationOut,
+    PriceSnapshotCreate,
+    PriceSnapshotOut,
 )
 from evallab.services import agents as svc
 
 router = APIRouter()
+
+
+@router.post(
+    "/price-snapshots", status_code=status.HTTP_201_CREATED, response_model=PriceSnapshotOut
+)
+def create_price(
+    request: Request, body: PriceSnapshotCreate, idempotency_key: IdempotencyHeader = None
+) -> JSONResponse:
+    return _create(
+        request,
+        "POST /price-snapshots",
+        idempotency_key,
+        body.model_dump(mode="json"),
+        lambda db: (status.HTTP_201_CREATED, dump(svc.price_to_out(svc.publish_price(db, body)))),
+    )
+
+
+@router.get("/price-snapshots/{content_hash}")
+def read_price(request: Request, content_hash: str) -> PriceSnapshotOut:
+    with sessions(request).begin() as db:
+        return svc.price_to_out(svc.get_price(db, content_hash))
 
 
 @router.post(

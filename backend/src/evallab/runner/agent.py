@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from evallab import telemetry
 from evallab.domain.lifecycle import RunStatus
+from evallab.runner.accounting import ModelAccounting
 from evallab.runner.contracts import (
     Action,
     AgentSnapshot,
@@ -14,7 +15,10 @@ from evallab.runner.contracts import (
     FinalAnswer,
     ModelCall,
     ModelGateway,
+    ModelObservation,
     Observation,
+    PatternObservation,
+    PlanCreated,
     RunContext,
     RunResult,
     ToolCall,
@@ -23,12 +27,14 @@ from evallab.runner.contracts import (
     Usage,
 )
 from evallab.runner.errors import (
+    InvalidLimitsError,
     ModelNotAllowedError,
     ReplayNotImplementedError,
     RunnerError,
     UnsupportedPatternError,
 )
 from evallab.runner.limits import Limits
+from evallab.runner.models import ModelCallError, ModelRequest, ModelSnapshot, max_call_cost
 from evallab.runner.patterns import adapter_for
 from evallab.runner.replay import ReplayMismatchError, ReplayToolGateway
 from evallab.runner.sink import MemoryEvent, MemoryTraceSink
@@ -68,8 +74,8 @@ class _Stop:
     """Límite alcanzado antes de iniciar un paso o una llamada; no se inicia la acción."""
 
     limit: str
-    value: int
-    used: int
+    value: int | str
+    used: int | str
 
 
 class _Run:
@@ -95,6 +101,9 @@ class _Run:
         self.retries = 0
         self.evidence: list[EvidenceRef] = []
         self.violations = 0
+        self.accounting = ModelAccounting()
+        self.model_turns: dict[str, int] = {}
+        self.providers: tuple[str, ...] = ()
 
     @property
     def usage(self) -> Usage:
@@ -103,6 +112,9 @@ class _Run:
             tool_calls=self.tool_calls,
             steps=self.steps,
             retries=self.retries,
+            tokens=self.accounting.tokens_json(),
+            cost=self.accounting.cost_json(),
+            by_role=self.accounting.by_role_json(),
         )
 
     def elapsed_ms(self) -> int:
@@ -116,6 +128,10 @@ class _Run:
             tool_calls_used=self.tool_calls,
             deadline_ms=self.limits.deadline_ms,
             elapsed_ms=self.elapsed_ms(),
+            max_model_calls=self.limits.max_model_calls,
+            model_calls_used=self.model_calls,
+            max_tokens=self.limits.max_tokens,
+            tokens_used=self.accounting.known_tokens,
         )
 
     def _terminal(self, **extra: Any) -> dict[str, Any]:
@@ -136,6 +152,7 @@ class _Run:
             usage=self.usage,
             completeness=self.sink.completeness,
             policy_violations=self.violations,
+            providers=self.providers,
             **fields,
         )
 
@@ -177,17 +194,33 @@ class _Run:
             return _Stop("max_tool_calls", self.limits.max_tool_calls, self.tool_calls)
         return self._deadline()
 
-    def before_model_call(self) -> _Stop | None:
+    def before_model_call(
+        self, model: ModelSnapshot | None = None, request: ModelRequest | None = None
+    ) -> _Stop | None:
         maximum = self.limits.max_model_calls
         if maximum is not None and self.model_calls >= maximum:
             return _Stop("max_model_calls", maximum, self.model_calls)
+        tokens = self.limits.max_tokens
+        # Sólo se puede cortar sobre tokens conocidos: es una cota inferior del consumo real.
+        if tokens is not None and self.accounting.known_tokens >= tokens:
+            return _Stop("max_tokens", tokens, self.accounting.known_tokens)
+        budget = self.limits.max_cost_usd
+        if budget is not None and model is not None and request is not None:
+            reservation = max_call_cost(request, model)
+            if reservation is None:
+                raise InvalidLimitsError("límite monetario sin price snapshot del modelo")
+            committed = self.accounting.committed_cost()
+            if committed + reservation > budget:
+                return _Stop("max_cost_usd", format(budget, "f"), format(committed, "f"))
         return self._deadline()
 
-    def end_step(self, step_id: str, started: MemoryEvent, status: str) -> None:
+    def end_step(
+        self, step_id: str, started: MemoryEvent, status: str, role: str = "executor"
+    ) -> None:
         self.sink.append(
             "step.completed",
-            "executor",
-            {"step_id": step_id, "role": "executor", "status": status},
+            role,
+            {"step_id": step_id, "role": role, "status": status},
             parent_event_id=started.event_id,
         )
 
@@ -268,6 +301,148 @@ class _Run:
             error_class=outcome.error_class,
             evidence_id=self.evidence[-1].event_id if completed else None,
             reason_codes=outcome.reason_codes,
+        )
+
+    def record_model(
+        self,
+        request: ModelRequest,
+        gateway: ModelGateway,
+        step_event: MemoryEvent,
+        scenario_slug: str | None,
+    ) -> ModelObservation | _Stop:
+        """Ejecuta una llamada a modelo con límites previos, retries trazados y contabilidad."""
+        model = gateway.models().get(request.role)
+        stopped = self.before_model_call(model, request)
+        if stopped is not None:
+            return stopped
+        role = request.role
+        turn = self.model_turns.get(role, 0)
+        requested = self.sink.append(
+            "model.requested",
+            role,
+            {
+                "request_digest": request.digest(),
+                "model_config_ref": model.ref() if model is not None else None,
+                "input": request.as_json(),
+                "tools": [tool.name for tool in request.tools],
+                "turn": turn,
+            },
+            parent_event_id=step_event.event_id,
+        )
+        attempt = 1
+        retries_left = self.limits.retries_per_call
+        while True:
+            self.model_turns[role] = self.model_turns.get(role, 0) + 1
+            call = replace(
+                request,
+                metadata={
+                    **request.metadata,
+                    "scenario_slug": scenario_slug,
+                    "turn": self.model_turns[role] - 1,
+                },
+            )
+            reservation = max_call_cost(call, model) if model is not None else None
+            with telemetry.span(
+                "model.generate",
+                **{
+                    "evallab.run_id": str(self.context.run_id),
+                    "evallab.model.role": role,
+                    "evallab.model.provider": model.provider if model else None,
+                    "evallab.model.requested": model.requested_model if model else None,
+                    "evallab.model.attempt": attempt,
+                },
+            ) as current:
+                try:
+                    result = gateway.generate(call)
+                except ModelCallError as exc:
+                    self.model_calls += 1
+                    self.accounting.record_failure(role)
+                    telemetry.mark_error(current, exc.kind)
+                    self.sink.append(
+                        "model.failed",
+                        role,
+                        {
+                            "request_event_id": str(requested.event_id),
+                            "attempt": attempt,
+                            "error_class": exc.error_class,
+                            "kind": exc.kind,
+                            "error": exc.message,
+                            "retriable": exc.retriable,
+                        },
+                        parent_event_id=requested.event_id,
+                    )
+                    if not exc.retriable or retries_left == 0:
+                        raise
+                    stopped = self.before_model_call(model, request)
+                    if stopped is not None:
+                        return stopped
+                    attempt += 1
+                    retries_left -= 1
+                    self.retries += 1
+                    self.sink.append(
+                        "retry.scheduled",
+                        "harness",
+                        {
+                            "origin_call_id": str(requested.event_id),
+                            "attempt_number": attempt,
+                            "reason": exc.kind,
+                            "delay_ms": 0,
+                        },
+                        parent_event_id=requested.event_id,
+                    )
+                    continue
+                self.model_calls += 1
+                self.accounting.record_result(result, reservation)
+                budget = self.limits.max_cost_usd
+                if budget is not None and self.accounting.committed_cost() > budget:
+                    # Contabilización tardía: el coste real superó el límite tras llamar.
+                    self.accounting.overrun = True
+                response = result.response
+                telemetry.set_attributes(
+                    current,
+                    **{
+                        "evallab.model.revision": result.revision,
+                        "evallab.model.finish_reason": response.finish_reason,
+                    },
+                )
+                completed = self.sink.append(
+                    "model.completed",
+                    role,
+                    {
+                        "request_event_id": str(requested.event_id),
+                        "attempt": attempt,
+                        "output": {
+                            "content": response.content,
+                            "tool_calls": [call.as_json() for call in response.tool_calls],
+                        },
+                        "usage": response.usage.as_json(),
+                        "cost": result.cost.as_json(),
+                        "resolved_model": result.revision,
+                        "revision_status": result.revision_status,
+                        "finish_reason": response.finish_reason,
+                        "provider_request_id": response.provider_request_id,
+                    },
+                    parent_event_id=requested.event_id,
+                )
+                return ModelObservation(
+                    role=role,
+                    content=response.content,
+                    tool_calls=response.tool_calls,
+                    finish_reason=response.finish_reason,
+                    event_id=completed.event_id,
+                )
+
+    def record_plan(self, plan: PlanCreated, step_event: MemoryEvent) -> None:
+        self.sink.append(
+            "plan.created",
+            "planner",
+            {
+                "steps": [step.as_json() for step in plan.steps],
+                "source_event_id": None
+                if plan.source_event_id is None
+                else str(plan.source_event_id),
+            },
+            parent_event_id=step_event.event_id,
         )
 
     def _invoke(
@@ -457,23 +632,24 @@ def _execute_agent(
     except RunnerError as exc:
         limits, limits_error = Limits(), exc
 
-    started_event = sink.append(
-        "run.started",
-        "harness",
-        {
-            "manifest_hash": context.manifest_hash,
-            "scenario_ref": _scenario_ref(scenario),
-            "agent_ref": _ref(agent),
-            "mode": context.mode,
-            "limits": limits.as_json(),
-            "seed": context.seed,
-            "tools": [
-                {"name": t.name, "version": t.version, "content_hash": t.content_hash}
-                for t in tools.allowed_tools()
-            ],
-        },
-    )
+    started_payload: dict[str, Any] = {
+        "manifest_hash": context.manifest_hash,
+        "scenario_ref": _scenario_ref(scenario),
+        "agent_ref": _ref(agent),
+        "mode": context.mode,
+        "limits": limits.as_json(),
+        "seed": context.seed,
+        "tools": [
+            {"name": t.name, "version": t.version, "content_hash": t.content_hash}
+            for t in tools.allowed_tools()
+        ],
+    }
+    models = model.models()
+    if models:
+        started_payload["models"] = [models[role].ref() for role in sorted(models)]
+    started_event = sink.append("run.started", "harness", started_payload)
     run = _Run(sink, context, limits, agent.pattern, agent.pattern_version)
+    run.providers = tuple(sorted({snapshot.provider for snapshot in models.values()}))
     if limits_error is not None:
         return run.fail(limits_error.error_class, limits_error.message)
     if context.mode == "replay":
@@ -487,64 +663,107 @@ def _execute_agent(
     except RunnerError as exc:
         return run.fail(exc.error_class, exc.message)
     run.pattern, run.pattern_version = adapter.pattern, adapter.pattern_version
+    return _loop(run, context, adapter, scenario, model, tools)
 
-    observations: list[Observation] = []
+
+def _step_role(adapter: Any) -> str:
+    role = getattr(adapter, "step_role", None)
+    return str(role()) if callable(role) else "executor"
+
+
+def _continues_step(adapter: Any) -> bool:
+    """El patrón puede encadenar acciones en el mismo ciclo de decisión (p. ej. ReAct ejecuta
+    las tool calls de una respuesta del modelo dentro del paso que la pidió)."""
+    continues = getattr(adapter, "continues_step", None)
+    return bool(continues()) if callable(continues) else False
+
+
+def _replay_pending(tools: ToolGateway, model: ModelGateway) -> int:
+    pending = tools.pending() if isinstance(tools, ReplayToolGateway) else 0
+    model_pending = getattr(model, "pending", None)
+    return pending + (int(model_pending()) if callable(model_pending) else 0)
+
+
+def _loop(
+    run: _Run,
+    context: RunContext,
+    adapter: Any,
+    scenario: ScenarioPublicOut,
+    model: ModelGateway,
+    tools: ToolGateway,
+) -> RunResult:
+    sink = run.sink
+    observations: list[PatternObservation] = []
+    step: tuple[str, MemoryEvent, str] | None = None
+    status = "completed"
+
+    def close(final_status: str) -> None:
+        nonlocal step
+        if step is not None:
+            step_id, started, role = step
+            run.end_step(step_id, started, final_status, role)
+            step = None
+
     while True:
-        stopped = run.before_step()
-        if stopped is not None:
-            return run.stop(stopped)
-        run.steps += 1
-        step_id = f"s{run.steps}"
-        started = sink.append(
-            "step.started",
-            "executor",
-            {"step_id": step_id, "role": "executor", "status": "running"},
-        )
+        if step is None or not _continues_step(adapter):
+            close(status)
+            stopped = run.before_step()
+            if stopped is not None:
+                return run.stop(stopped)
+            run.steps += 1
+            role = _step_role(adapter)
+            step_id = f"s{run.steps}"
+            started = sink.append(
+                "step.started", role, {"step_id": step_id, "role": role, "status": "running"}
+            )
+            step = (step_id, started, role)
+            status = "completed"
+        _, started, _ = step
         try:
             action: Action = adapter.next_action(context, observations, run.remaining())
         except RunnerError as exc:
-            run.end_step(step_id, started, "failed")
+            close("failed")
             return run.fail(exc.error_class, exc.message)
 
         if isinstance(action, FinalAnswer):
-            if isinstance(tools, ReplayToolGateway) and tools.pending():
-                run.end_step(step_id, started, "failed")
+            pending = _replay_pending(tools, model)
+            if context.mode == "replay" and pending:
+                close("failed")
                 return run.fail(
                     ReplayMismatchError.error_class,
-                    f"el replay terminó con {tools.pending()} llamadas grabadas sin emitir",
+                    f"el replay terminó con {pending} llamadas grabadas sin emitir",
                 )
-            run.end_step(step_id, started, "completed")
+            close("completed" if status == "completed" else status)
             return run.complete(action.output)
         if isinstance(action, ToolCall):
             try:
                 recorded = run.record_tool(action, tools, started)
             except ReplayMismatchError as exc:
-                run.end_step(step_id, started, "failed")
+                close("failed")
                 return run.fail(exc.error_class, exc.message)
             if isinstance(recorded, _Stop):
-                run.end_step(step_id, started, "interrupted")
+                close("interrupted")
                 return run.stop(recorded)
             observations.append(recorded)
-            run.end_step(
-                step_id, started, "completed" if recorded.status == "completed" else "failed"
-            )
+            if recorded.status != "completed":
+                status = "failed"
             continue
         if isinstance(action, ModelCall):
-            stopped = run.before_model_call()
-            if stopped is not None:
-                run.end_step(step_id, started, "interrupted")
-                return run.stop(stopped)
-            with telemetry.span(
-                "model.generate", **{"evallab.run_id": str(context.run_id)}
-            ) as current:
-                try:
-                    model.generate(action.messages, tools.allowed_tools())
-                except ModelNotAllowedError as exc:
-                    message = exc.message
-                else:
-                    message = "el patrón emitió una llamada a modelo"
-                telemetry.mark_error(current, ModelNotAllowedError.error_class)
-            run.end_step(step_id, started, "failed")
-            return run.fail(ModelNotAllowedError.error_class, message)
-        run.end_step(step_id, started, "failed")
+            try:
+                observed = run.record_model(action.request, model, started, scenario.slug)
+            except ModelNotAllowedError as exc:
+                close("failed")
+                return run.fail(ModelNotAllowedError.error_class, exc.message)
+            except (ModelCallError, ReplayMismatchError, InvalidLimitsError) as exc:
+                close("failed")
+                return run.fail(exc.error_class, exc.message)
+            if isinstance(observed, _Stop):
+                close("interrupted")
+                return run.stop(observed)
+            observations.append(observed)
+            continue
+        if isinstance(action, PlanCreated):
+            run.record_plan(action, started)
+            continue
+        close("failed")
         return run.fail(UnsupportedPatternError.error_class, "acción de patrón no soportada")

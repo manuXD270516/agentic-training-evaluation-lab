@@ -449,6 +449,38 @@ class BenchmarkCreate(StrictModel):
     content_hash: Digest | None = None
 
 
+Money = Annotated[str, Field(pattern=r"^(0|[1-9][0-9]*)(\.[0-9]{1,12})?$")]
+
+
+class PriceSnapshotCreate(StrictModel):
+    """Tarifa por millón de tokens; los importes son decimales en texto (sin flotantes)."""
+
+    provider: Slug
+    model: str = Field(min_length=1, max_length=200)
+    currency: str = Field(default="USD", pattern=r"^[A-Z]{3}$")
+    input_per_mtok: Money
+    output_per_mtok: Money
+    cached_input_per_mtok: Money | None = None
+    effective_date: str = Field(pattern=r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+    source: str = Field(min_length=1, max_length=500)
+    synthetic: bool
+    content_hash: Digest | None = None
+
+
+class PriceSnapshotOut(BaseModel):
+    content_hash: str
+    provider: str
+    model: str
+    currency: str
+    input_per_mtok: str
+    output_per_mtok: str
+    cached_input_per_mtok: str | None
+    effective_date: str
+    source: str
+    synthetic: bool
+    created_at: datetime
+
+
 class ModelConfigurationCreate(StrictModel):
     """Modelo por rol. `resolved_revision=None` declara revisión desconocida."""
 

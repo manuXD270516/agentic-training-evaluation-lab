@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import contextlib
 import uuid
+from collections.abc import Callable, Collection
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, cast
@@ -32,6 +33,7 @@ from evallab.runner.agent import execute_agent
 from evallab.runner.contracts import (
     AgentSnapshot,
     AllowedTool,
+    ModelGateway,
     RunContext,
     RunResult,
     ToolGateway,
@@ -40,6 +42,8 @@ from evallab.runner.contracts import (
 from evallab.runner.errors import InvalidFaultScheduleError, RunnerError
 from evallab.runner.gateways import DeniedModelGateway
 from evallab.runner.limits import Limits
+from evallab.runner.models import ModelSnapshot, PriceInfo, ProviderModelGateway
+from evallab.runner.providers import FIXTURE_PROVIDER, default_providers
 from evallab.runner.redaction import redact, redaction_metadata
 from evallab.runner.replay import ReplayMismatchError, ReplayToolGateway
 from evallab.runner.sink import MemoryTraceSink, mark_incomplete
@@ -81,14 +85,48 @@ class AttemptOutcome:
     replay: dict[str, Any] | None = None
 
 
+def _price(db: Session, ref: str | None) -> PriceInfo | None:
+    row = db.get(m.PriceSnapshot, ref) if ref is not None else None
+    if row is None:
+        return None
+    return PriceInfo(
+        ref=row.content_hash,
+        currency=row.currency,
+        input_per_mtok=row.input_per_mtok,
+        output_per_mtok=row.output_per_mtok,
+        cached_input_per_mtok=row.cached_input_per_mtok,
+        synthetic=row.synthetic,
+    )
+
+
+def _model_snapshot(db: Session, role: m.AgentRole) -> ModelSnapshot | None:
+    model = db.get(m.ModelConfiguration, (role.model_id, role.model_version))
+    if model is None:
+        return None
+    return ModelSnapshot(
+        role=role.role,
+        id=model.id,
+        version=model.version,
+        content_hash=model.content_hash,
+        provider=model.provider,
+        requested_model=model.requested_model,
+        resolved_revision=model.resolved_revision,
+        temperature=None if model.temperature is None else format(model.temperature, "f"),
+        max_tokens=model.max_tokens,
+        seed_support=model.seed_support,
+        price=_price(db, model.price_snapshot_ref),
+    )
+
+
 def _agent_snapshot(db: Session, cfg: m.AgentConfiguration) -> AgentSnapshot:
-    roles = tuple(
+    rows = list(
         db.scalars(
-            select(m.AgentRole.role)
+            select(m.AgentRole)
             .where(m.AgentRole.agent_id == cfg.id, m.AgentRole.agent_version == cfg.version)
             .order_by(m.AgentRole.role)
         )
     )
+    models = {row.role: snap for row in rows if (snap := _model_snapshot(db, row)) is not None}
     params = cfg.pattern_parameters if isinstance(cfg.pattern_parameters, dict) else {}
     return AgentSnapshot(
         id=cfg.id,
@@ -98,8 +136,24 @@ def _agent_snapshot(db: Session, cfg: m.AgentConfiguration) -> AgentSnapshot:
         content_hash=cfg.content_hash,
         pattern_parameters=params,
         prompt_hash=cfg.prompt_hash,
-        roles=roles or ("executor",),
+        roles=tuple(row.role for row in rows) or ("executor",),
+        models=models,
     )
+
+
+def _fixture_payload(db: Session) -> Callable[[str], Any | None]:
+    def load(content_hash: str) -> Any | None:
+        row = db.get(m.Fixture, content_hash)
+        return row.payload if row is not None else None
+
+    return load
+
+
+def model_gateway(db: Session, agent: AgentSnapshot) -> ModelGateway:
+    """Scripted no tiene modelo; el resto usa los proveedores habilitados (fixture por defecto)."""
+    if agent.pattern == "scripted":
+        return DeniedModelGateway()
+    return ProviderModelGateway(agent.models, default_providers(_fixture_payload(db)))
 
 
 def _scenario_tools(db: Session, scenario: m.Scenario) -> list[m.ToolDefinition]:
@@ -162,9 +216,14 @@ def _tool_gateway(
     )
 
 
-def _labels(pattern: str) -> dict[str, str]:
+def _labels(pattern: str, providers: Collection[str] = ()) -> dict[str, str]:
+    """Atribución honesta: scripted prueba el harness; un modelo de fixture tampoco es un LLM."""
     if pattern == "scripted":
         return {"label": "scripted", "attribution": "harness_baseline"}
+    if providers and set(providers) == {FIXTURE_PROVIDER}:
+        return {"label": pattern, "attribution": "fixture_model"}
+    if providers:
+        return {"label": pattern, "attribution": "model_pattern"}
     return {"label": pattern, "attribution": "unimplemented"}
 
 
@@ -173,7 +232,7 @@ def _result_document(result: RunResult, claim: Claim) -> dict[str, Any]:
     document: dict[str, Any] = {
         "pattern": result.pattern,
         "pattern_version": result.pattern_version,
-        **_labels(result.pattern),
+        **_labels(result.pattern, result.providers),
         "output": output,
         "evidence_refs": [ref.as_json() for ref in result.evidence_refs],
         "usage": result.usage.as_json(),
@@ -446,10 +505,11 @@ def _run_attempt(db: Session, claim: Claim, *, policy: SandboxPolicy | None) -> 
     source_output: str | None = None
     try:
         tools: ToolGateway = _tool_gateway(db, scenario, agent)
+        model = model_gateway(db, snapshot)
         if run.mode == "replay" and run.source_run_id is not None:
             tools, replay, source_output = _replay_gateway(db, run.source_run_id, tools)
         result = execute_agent(
-            context, snapshot, scenario_public_view(scenario), DeniedModelGateway(), tools, sink
+            context, snapshot, scenario_public_view(scenario), model, tools, sink
         )
         if replay is not None:
             replay["output_matches_source"] = (

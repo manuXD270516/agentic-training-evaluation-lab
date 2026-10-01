@@ -22,6 +22,7 @@ from evallab.runner.contracts import (
     BudgetRemaining,
     FinalAnswer,
     Observation,
+    PatternObservation,
     RunContext,
     ToolCall,
 )
@@ -109,7 +110,7 @@ class ScriptedPatternAdapter:
     def next_action(
         self,
         context: RunContext,
-        observations: Sequence[Observation],
+        observations: Sequence[PatternObservation],
         remaining: BudgetRemaining,
     ) -> Action:
         del context, remaining
@@ -119,5 +120,9 @@ class ScriptedPatternAdapter:
         self._index += 1
         if isinstance(step, ToolStep):
             return ToolCall(tool=step.tool, arguments=step.arguments)
-        evidence = [str(o.evidence_id) for o in observations if o.evidence_id is not None]
+        evidence = [
+            str(o.evidence_id)
+            for o in observations
+            if isinstance(o, Observation) and o.evidence_id is not None
+        ]
         return FinalAnswer(output=_fill_evidence(step.output, evidence))

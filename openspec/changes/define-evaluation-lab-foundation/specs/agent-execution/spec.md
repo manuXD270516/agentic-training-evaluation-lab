@@ -36,6 +36,10 @@ El runner SHALL aplicar límites de pasos, llamadas, tokens, tiempo y coste esti
 - **WHEN** se alcanza el máximo de pasos antes de completar la tarea
 - **THEN** el run termina budget_exceeded y no inicia otra llamada.
 
+#### Scenario: Monetary limit without price
+- **WHEN** un experimento declara `max_cost_usd` y algún modelo de sus agentes no tiene price snapshot
+- **THEN** se rechaza el sellado; sin límite monetario se admite y el coste queda `unknown`, nunca cero.
+
 #### Scenario: Ambiguous side effect
 - **WHEN** una tool con efectos devuelve timeout sin confirmar ejecución
 - **THEN** no se reintenta automáticamente sin comprobar idempotencia o estado.

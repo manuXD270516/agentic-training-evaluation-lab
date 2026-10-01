@@ -69,3 +69,8 @@ class VersionExistsError(DomainError):
 class ContentDuplicateError(DomainError):
     status_code = 409
     code = "content_duplicate"
+
+
+class PriceRequiredError(DomainError):
+    status_code = 422
+    code = "price_required_for_monetary_limit"

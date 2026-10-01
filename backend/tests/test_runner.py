@@ -1,6 +1,6 @@
 import time
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from typing import Any
 
@@ -8,10 +8,11 @@ import pytest
 
 from evallab.domain.lifecycle import RunStatus
 from evallab.runner.agent import execute_agent
-from evallab.runner.contracts import AgentSnapshot, AllowedTool, RunContext
+from evallab.runner.contracts import AgentSnapshot, RunContext
 from evallab.runner.errors import InvalidLimitsError, TraceIntegrityError
 from evallab.runner.gateways import DeniedModelGateway
 from evallab.runner.limits import Limits
+from evallab.runner.models import ModelRequest, ModelResult, ModelSnapshot
 from evallab.runner.sink import MemoryTraceSink
 from evallab.runner.tools import FixtureToolGateway
 from evallab.schemas import ScenarioPublicOut
@@ -115,7 +116,10 @@ class RecordingModel:
     def __init__(self) -> None:
         self.calls = 0
 
-    def generate(self, messages: Sequence[Any], tools: Sequence[AllowedTool]) -> Any:
+    def models(self) -> Mapping[str, ModelSnapshot]:
+        return {}
+
+    def generate(self, request: ModelRequest) -> ModelResult:
         self.calls += 1
         raise AssertionError("scripted no debe llamar al modelo")
 

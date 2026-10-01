@@ -19,6 +19,8 @@ from evallab.schemas import (
     AgentConfigurationOut,
     ModelConfigurationCreate,
     ModelConfigurationOut,
+    PriceSnapshotCreate,
+    PriceSnapshotOut,
     VersionRef,
 )
 from evallab.services.catalog import (
@@ -50,7 +52,82 @@ def model_document(data: ModelConfigurationCreate, model_id: uuid.UUID) -> dict[
     }
 
 
+def price_document(data: PriceSnapshotCreate) -> dict[str, Any]:
+    def money(value: str | None) -> str | None:
+        return None if value is None else format(Decimal(value).normalize(), "f")
+
+    return {
+        "provider": data.provider,
+        "model": data.model,
+        "currency": data.currency,
+        "input_per_mtok": money(data.input_per_mtok),
+        "output_per_mtok": money(data.output_per_mtok),
+        "cached_input_per_mtok": money(data.cached_input_per_mtok),
+        "effective_date": data.effective_date,
+        "source": data.source,
+        "synthetic": data.synthetic,
+    }
+
+
+def publish_price(db: Session, data: PriceSnapshotCreate) -> m.PriceSnapshot:
+    """Snapshot de tarifa direccionado por contenido; republicar el mismo es idempotente."""
+    document = price_document(data)
+    content_hash = _digest(document)
+    _check_client_hash(content_hash, data.content_hash)
+    existing = db.get(m.PriceSnapshot, content_hash)
+    if existing is not None:
+        return existing
+    cached = document["cached_input_per_mtok"]
+    row = m.PriceSnapshot(
+        content_hash=content_hash,
+        provider=data.provider,
+        model=data.model,
+        currency=data.currency,
+        input_per_mtok=Decimal(document["input_per_mtok"]),
+        output_per_mtok=Decimal(document["output_per_mtok"]),
+        cached_input_per_mtok=None if cached is None else Decimal(cached),
+        effective_date=data.effective_date,
+        source=data.source,
+        synthetic=data.synthetic,
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def get_price(db: Session, content_hash: str) -> m.PriceSnapshot:
+    row = db.get(m.PriceSnapshot, content_hash)
+    if row is None:
+        raise NotFoundError("price snapshot inexistente", content_hash=content_hash)
+    return row
+
+
+def price_to_out(row: m.PriceSnapshot) -> PriceSnapshotOut:
+    return PriceSnapshotOut(
+        content_hash=row.content_hash,
+        provider=row.provider,
+        model=row.model,
+        currency=row.currency,
+        input_per_mtok=format(row.input_per_mtok, "f"),
+        output_per_mtok=format(row.output_per_mtok, "f"),
+        cached_input_per_mtok=None
+        if row.cached_input_per_mtok is None
+        else format(row.cached_input_per_mtok, "f"),
+        effective_date=row.effective_date,
+        source=row.source,
+        synthetic=row.synthetic,
+        created_at=row.created_at,
+    )
+
+
 def publish_model(db: Session, data: ModelConfigurationCreate) -> m.ModelConfiguration:
+    if (
+        data.price_snapshot_ref is not None
+        and db.get(m.PriceSnapshot, data.price_snapshot_ref) is None
+    ):
+        raise InvalidReferenceError(
+            "price snapshot inexistente", price_snapshot_ref=data.price_snapshot_ref
+        )
     model_id = data.id or uuid.uuid4()
     document = model_document(data, model_id)
     content_hash = _digest(document)

@@ -18,7 +18,7 @@ from evallab.runner.errors import RunnerError
 from evallab.runner.redaction import redact
 
 # Campos de run.started que deben coincidir para considerar la reproducción idéntica.
-START_FIELDS = ("manifest_hash", "scenario_ref", "agent_ref", "limits", "seed", "tools")
+START_FIELDS = ("manifest_hash", "scenario_ref", "agent_ref", "limits", "seed", "tools", "models")
 
 
 class ReplayMismatchError(RunnerError):

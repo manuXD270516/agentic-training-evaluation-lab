@@ -32,6 +32,7 @@ from evallab.services.errors import (
     InvalidRequestError,
     InvalidTransitionConflictError,
     NotFoundError,
+    PriceRequiredError,
     RunCellExistsError,
 )
 
@@ -279,6 +280,23 @@ def build_manifest(db: Session, exp: m.Experiment) -> dict[str, Any]:
     }
 
 
+def _require_prices_for_monetary_limit(manifest: dict[str, Any]) -> None:
+    """Un límite monetario exige precio en cada modelo; sin límite, el coste queda unknown."""
+    budgets = manifest.get("budgets") or {}
+    if "max_cost_usd" not in budgets:
+        return
+    missing = [
+        {"agent": agent["id"], "role": role["role"], "model": role["model"]["id"]}
+        for agent in manifest["agents"]
+        for role in agent["roles"]
+        if role["model"]["price_snapshot_ref"] is None
+    ]
+    if missing:
+        raise PriceRequiredError(
+            "un límite monetario exige price snapshot en todos los modelos", missing=missing
+        )
+
+
 def seal(db: Session, experiment_id: uuid.UUID) -> m.Experiment:
     exp = _get_for_update(db, experiment_id)
     try:
@@ -286,6 +304,7 @@ def seal(db: Session, experiment_id: uuid.UUID) -> m.Experiment:
     except InvalidTransitionError as exc:
         raise InvalidTransitionConflictError(str(exc), status=exp.status) from exc
     manifest = build_manifest(db, exp)
+    _require_prices_for_monetary_limit(manifest)
     exp.manifest = manifest
     exp.manifest_hash = canonical_digest(manifest)
     exp.sealed_at = datetime.now(UTC)

@@ -238,9 +238,40 @@ class ToolDefinition(Base):
     created_at: Mapped[datetime] = created_at()
 
 
+class PriceSnapshot(Base):
+    """Tarifa por millón de tokens en una fecha, identificada por hash de contenido (M6, 7.1).
+
+    Es una estimación publicada (o sintética, `synthetic=true`), no una factura del proveedor.
+    """
+
+    __tablename__ = "price_snapshots"
+    __table_args__ = (
+        CheckConstraint(sha256("content_hash"), name="content_hash_sha256"),
+        CheckConstraint("currency ~ '^[A-Z]{3}$'", name="currency_iso"),
+        CheckConstraint(
+            "input_per_mtok >= 0 AND output_per_mtok >= 0"
+            " AND (cached_input_per_mtok IS NULL OR cached_input_per_mtok >= 0)",
+            name="prices_non_negative",
+        ),
+    )
+
+    content_hash: Mapped[str] = mapped_column(Text, primary_key=True)
+    provider: Mapped[str] = mapped_column(Text)
+    model: Mapped[str] = mapped_column(Text)
+    currency: Mapped[str] = mapped_column(Text)
+    input_per_mtok: Mapped[Decimal] = mapped_column(Numeric)
+    output_per_mtok: Mapped[Decimal] = mapped_column(Numeric)
+    cached_input_per_mtok: Mapped[Decimal | None] = mapped_column(Numeric)
+    effective_date: Mapped[str] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(Text)
+    synthetic: Mapped[bool] = mapped_column(Boolean)
+    created_at: Mapped[datetime] = created_at()
+
+
 class ModelConfiguration(Base):
     __tablename__ = "model_configurations"
     __table_args__ = (
+        ForeignKeyConstraint(["price_snapshot_ref"], ["price_snapshots.content_hash"]),
         UniqueConstraint("content_hash"),
         CheckConstraint(semver(), name="version_semver"),
         CheckConstraint(sha256("content_hash"), name="content_hash_sha256"),

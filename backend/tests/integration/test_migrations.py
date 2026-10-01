@@ -35,6 +35,7 @@ IMMUTABLE_TABLES = (
     "agent_roles",
     "agent_tools",
     "fixtures",
+    "price_snapshots",
 )
 
 FUNCTIONS = (

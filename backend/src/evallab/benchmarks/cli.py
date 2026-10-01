@@ -75,7 +75,9 @@ def _publish(
 
 def _write_json(path: Path, value: Any) -> None:
     path.write_text(
-        json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False) + "\n", encoding="utf-8"
+        json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+        newline="\n",
     )
 
 
@@ -135,6 +137,7 @@ def _run(engine: Engine, name: str, suite: Suite, args: argparse.Namespace) -> d
             names={str(published.agents[n].id): n for n in names},
         ),
         encoding="utf-8",
+        newline="\n",
     )
     return report
 

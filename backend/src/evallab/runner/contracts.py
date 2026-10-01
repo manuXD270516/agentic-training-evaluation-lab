@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import time
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Literal, Protocol
 
 from evallab.domain.lifecycle import RunStatus
+from evallab.runner.models import ModelRequest, ModelResult, ModelSnapshot, ModelToolCall
 from evallab.schemas import JsonValue, ScenarioPublicOut
 from evallab.settings import SandboxPolicy
 
@@ -30,6 +31,7 @@ class AgentSnapshot:
     pattern_parameters: dict[str, Any]
     prompt_hash: str | None
     roles: tuple[str, ...]
+    models: Mapping[str, ModelSnapshot] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -55,6 +57,10 @@ class BudgetRemaining:
     tool_calls_used: int = 0
     deadline_ms: int | None = None
     elapsed_ms: int = 0
+    max_model_calls: int | None = None
+    model_calls_used: int = 0
+    max_tokens: int | None = None
+    tokens_used: int | None = 0
 
 
 ToolOutcomeKind = Literal["completed", "denied", "invalid", "failed"]
@@ -106,12 +112,50 @@ class FinalAnswer:
 
 @dataclass(frozen=True)
 class ModelCall:
-    """Reservado para ReAct (M6); scripted no lo emite."""
+    """El patrón pide una llamada al modelo de un rol; el runner la ejecuta y la traza."""
 
-    messages: tuple[Any, ...] = ()
+    request: ModelRequest
 
 
-Action = ToolCall | FinalAnswer | ModelCall
+@dataclass(frozen=True)
+class ModelObservation:
+    """Respuesta del modelo tal como la ve el patrón (tras validación del gateway)."""
+
+    role: str
+    content: str | None
+    tool_calls: tuple[ModelToolCall, ...]
+    finish_reason: str | None
+    event_id: uuid.UUID
+
+
+@dataclass(frozen=True)
+class PlanStep:
+    step_id: str
+    description: str
+    tool: str | None = None
+    arguments: dict[str, Any] | None = None
+    depends_on: tuple[str, ...] = ()
+
+    def as_json(self) -> dict[str, Any]:
+        return {
+            "step_id": self.step_id,
+            "description": self.description,
+            "tool": self.tool,
+            "arguments": self.arguments,
+            "depends_on": list(self.depends_on),
+        }
+
+
+@dataclass(frozen=True)
+class PlanCreated:
+    """Plan público estructurado (Planner/Executor); el runner lo valida y emite plan.created."""
+
+    steps: tuple[PlanStep, ...]
+    source_event_id: uuid.UUID | None = None
+
+
+Action = ToolCall | FinalAnswer | ModelCall | PlanCreated
+PatternObservation = Observation | ModelObservation
 
 
 @dataclass(frozen=True)
@@ -131,9 +175,12 @@ class Usage:
     scope: Literal["agent", "judge"] = "agent"
     steps: int = 0
     retries: int = 0
+    tokens: Mapping[str, Any] | None = None
+    cost: Mapping[str, Any] | None = None
+    by_role: Mapping[str, Any] | None = None
 
     def as_json(self) -> dict[str, JsonValue]:
-        return {
+        document: dict[str, JsonValue] = {
             "model_calls": self.model_calls,
             "tool_calls": self.tool_calls,
             "steps": self.steps,
@@ -141,6 +188,13 @@ class Usage:
             "source": self.source,
             "scope": self.scope,
         }
+        if self.tokens is not None:
+            document["tokens"] = dict(self.tokens)
+        if self.cost is not None:
+            document["cost"] = dict(self.cost)
+        if self.by_role is not None:
+            document["by_role"] = dict(self.by_role)
+        return document
 
 
 @dataclass(frozen=True)
@@ -156,6 +210,7 @@ class RunResult:
     completeness: str = "complete"
     policy_violations: int = 0
     termination: dict[str, Any] | None = None
+    providers: tuple[str, ...] = ()
 
 
 class PatternAdapter(Protocol):
@@ -165,13 +220,15 @@ class PatternAdapter(Protocol):
     def next_action(
         self,
         context: RunContext,
-        observations: Sequence[Observation],
+        observations: Sequence[PatternObservation],
         remaining: BudgetRemaining,
     ) -> Action: ...
 
 
 class ModelGateway(Protocol):
-    def generate(self, messages: Sequence[Any], tools: Sequence[AllowedTool]) -> Any: ...
+    def models(self) -> Mapping[str, ModelSnapshot]: ...
+
+    def generate(self, request: ModelRequest) -> ModelResult: ...
 
 
 class ToolGateway(Protocol):

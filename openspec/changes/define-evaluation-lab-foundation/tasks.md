@@ -49,7 +49,8 @@
 
 ## 7. M6 — ReAct
 
-- [ ] 7.1 Implementar gateway neutral de modelo con uso/precios y errores tipados (agent-execution, metric-reporting); verificar usage ausente, revisión desconocida y rechazo de límite monetario sin precio.
+- [x] 7.1 Implementar gateway neutral de modelo con uso/precios y errores tipados (agent-execution, metric-reporting); verificar usage ausente, revisión desconocida y rechazo de límite monetario sin precio.
+  - Evidencia: pytest local (tests/test_model_gateway.py y tests/integration/test_api_agents.py, 2026-10-01; 321 tests en verde, migración 0008 sin deriva): respuesta sin uso deja `model.completed.usage.source=unknown`, `total_tokens` nulo, coste `unknown` sin importe y `Usage.tokens` del run `unknown` con subtotal conocido 0 (nunca cero como total); configuración sin `resolved_revision` y proveedor sin revisión registran `revision_status=unknown` en `run.started.models` y `model.completed`, y se distinguen `declared` y `reported`; coste = 1000×3 + 200×15 por millón = 0.006 exacto en Decimal, con tarifa de caché; `rate_limited` se reintenta con `retry.scheduled` y cuenta 2 llamadas, `content_filter` y respuesta vacía terminan `model_error`; rol sin modelo y proveedor no habilitado son errores tipados; `max_tokens` corta antes de la tercera llamada y `max_cost_usd` antes de la segunda por reserva, y el exceso tardío queda `overrun`. Por API: price snapshots direccionados por contenido (15.00 = 15), moneda o importe inválidos 422, ref de precio inexistente 422; sellar con `max_cost_usd` y un modelo sin precio da 422 `price_required_for_monetary_limit`, sin límite monetario sella, y con precio sella con el ref en el manifest. Sin llamadas reales: el único proveedor habilitado es `fixture`.
 - [ ] 7.2 Implementar ReAct versionado y seleccionar configuración live/presupuesto (agent-execution, reproducibility); verificar alternancia acción/observación, terminación y replay de run grabado.
 
 ## 8. M7 — Planner/Executor
