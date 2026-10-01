@@ -1,0 +1,17 @@
+{
+  "baseline": "pilot-react-fixture",
+  "candidate": "pilot-planner-executor-fixture",
+  "cells_executed": 140,
+  "evallab_version": "0.1.0",
+  "finished_at": "2026-10-01T06:35:53.022094+00:00",
+  "python": "3.14.7",
+  "seeds": [
+    11,
+    23,
+    37,
+    53,
+    71
+  ],
+  "suite": "pilot-models",
+  "variable": "pattern"
+}

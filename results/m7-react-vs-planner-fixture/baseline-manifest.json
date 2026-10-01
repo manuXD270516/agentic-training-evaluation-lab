@@ -1,0 +1,118 @@
+{
+  "manifest": {
+    "agents": [
+      {
+        "content_hash": "01cca7ea10765a2ee7d21ac0abca76035218167db99b9c7306316df1e9af7f4e",
+        "id": "9648a7c1-f3a3-515b-960e-97c5a43daea2",
+        "pattern": "react",
+        "pattern_parameters": {
+          "max_tokens_per_call": 256
+        },
+        "pattern_version": "1.0.0",
+        "prompt_hash": "1531f92878f3ba5657e9b502447b49bda76b9d1bdb4de48d6c112effa9f7771c",
+        "roles": [
+          {
+            "model": {
+              "content_hash": "102c83917b36f783641208952fd2c6ea2c383823bcbe7b91bc756c957d568769",
+              "id": "2a1519cf-cc0d-5ed1-b636-7c24b413fa64",
+              "max_tokens": 512,
+              "price_snapshot_ref": "da46912e616e7930062e7b6528f79b4dc65d5fb191d3defef8aa8ecd575f7d51",
+              "provider": "fixture",
+              "requested_model": "17445b9e3bca2eea491a1440c8e675654ae5586c9556526c7b9238b3d6ed3c33",
+              "resolved_revision": null,
+              "seed_support": "unsupported",
+              "temperature": "0",
+              "version": "1.0.0"
+            },
+            "role": "executor"
+          }
+        ],
+        "tools": [
+          {
+            "content_hash": "812b86d1b29da71f035382ce0be6c6730bf3054d03a718931bf5a78a2b24f8bb",
+            "effect_class": "read_only",
+            "fixture_hash": "0b16f5ed5d1ebb3666aa79f932075aba7cf1ef115f2d462c55b02c5e8bf2d7bf",
+            "id": "4587cfbe-3398-5d49-8e19-d622e41fdf9a",
+            "name": "inventory-lookup",
+            "timeout_ms": 1000,
+            "version": "1.0.0"
+          },
+          {
+            "content_hash": "8a081e6bf653475c4478b6c0e7be97640bcee55c3e979fbb78b99696ae6223b4",
+            "effect_class": "read_only",
+            "fixture_hash": "e806c83d1a7cb67fbf7a73978f98d0faaa55181f92ea07a3fcc81c0901e7a5f5",
+            "id": "4fa7d1fe-86fb-5412-ac01-db7179ba314d",
+            "name": "kb-search",
+            "timeout_ms": 1000,
+            "version": "1.0.0"
+          },
+          {
+            "content_hash": "917e96c852df41fc5c156dba89641120d51b9878f8b78eecf9cf85991f81f9ed",
+            "effect_class": "read_only",
+            "fixture_hash": "2df46dc227cca5ed0945dc61d79564c200a6ba00adba5ef3d0cc9aa6743510ee",
+            "id": "69b443ce-8fe3-52ec-bb66-da7d9c2a2308",
+            "name": "price-lookup",
+            "timeout_ms": 1000,
+            "version": "1.0.0"
+          },
+          {
+            "content_hash": "749c1cc000796ca61d48bc13f9c7c4633f534ce08b1c397b96973cb2a22c5a8d",
+            "effect_class": "side_effect",
+            "fixture_hash": "77c99bd9d33b18c577a737a1c53aeed6c315da2b2fbab1386d3b8ba047c3de18",
+            "id": "7e65c116-d6e3-573c-bd73-260a27320e38",
+            "name": "order-create",
+            "timeout_ms": 1000,
+            "version": "1.0.0"
+          },
+          {
+            "content_hash": "2dd16f3358ba87d40505514b6011ce24d8bb86a99b0aa52e6d7995f78e59c291",
+            "effect_class": "read_only",
+            "fixture_hash": "ac0af7eb1fb17edd9c7983a94df62fda8c376f5118561fb647bbc6368b20667c",
+            "id": "9124e0c9-46a7-5c37-9537-bfe9c5391bb0",
+            "name": "calculator",
+            "timeout_ms": 1000,
+            "version": "1.0.0"
+          },
+          {
+            "content_hash": "72c5fb548a447572c2cf0bf2d1bb73e0ec2a75cc09e89fc3c3cea12941db6651",
+            "effect_class": "read_only",
+            "fixture_hash": "e2ccb97b2302b773b7eaf6d208d7241c1c35425f74f2b18707e97299d4b1fd94",
+            "id": "bd386dc6-784e-5a51-b0e0-914fcfa6cdc8",
+            "name": "unit-converter",
+            "timeout_ms": 1000,
+            "version": "1.0.0"
+          }
+        ],
+        "version": "1.0.0"
+      }
+    ],
+    "benchmark": {
+      "content_hash": "b59318c7659772d94c5ebff0f78111443a61176d8b8ce321baa64fc883535ca2",
+      "dataset": {
+        "content_hash": "f88e82b413d089f5389734687bc60c0fce6ee215258cf527e83ae917d4ab3e7b",
+        "id": "c1d9cd93-19e9-58d3-ace2-17e1bd565b34",
+        "version": "0.1.0"
+      },
+      "id": "a438eeb7-296f-52ed-a747-0447331069fc",
+      "version": "1.0.0"
+    },
+    "budgets": {},
+    "comparison_plan": {
+      "baseline": "pilot-react-fixture",
+      "candidate": "pilot-planner-executor-fixture",
+      "independent_variable": "pattern",
+      "mode": "descriptive_only"
+    },
+    "hypothesis": "baseline: pilot-react-fixture en agentic-benchmark-pilot (comparación descriptiva)",
+    "repetitions": 5,
+    "schema_version": "1.0.0",
+    "seeds": [
+      11,
+      23,
+      37,
+      53,
+      71
+    ]
+  },
+  "manifest_hash": "2c44df383b6b3909ffa42cd02960ad7319106bf3dd89ec81122d0c94fb6f85ea"
+}
