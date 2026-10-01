@@ -1,0 +1,23 @@
+{
+  "agents": {
+    "v1-scripted-faulty": "097c804f-786e-570e-83f8-2cb834763d63",
+    "v1-scripted-reference": "b08049e3-e468-58b1-b011-19fd0aa662bc"
+  },
+  "cells_executed": 700,
+  "cells_planned": 700,
+  "evallab_version": "0.1.0",
+  "experiment_id": "657a5152-382f-452c-99ea-063c594c95f0",
+  "finished_at": "2026-10-01T21:58:43.945917+00:00",
+  "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.41",
+  "python": "3.14.7",
+  "repetitions": 5,
+  "seeds": [
+    11,
+    23,
+    37,
+    53,
+    71
+  ],
+  "suite": "v1",
+  "wall_clock_s": 33.558
+}

@@ -1,0 +1,16 @@
+{
+  "commit": "02e99ba41232cd26a3faa093aee6099205297917",
+  "host_worktree_dirty_at_run": true,
+  "image_id": "sha256:2d0898c59ed7e651c9cc69dc7a09ea5a46f8cc03ec0d181eacc619f50d9bf1cb",
+  "compose_project": "evallab-repro",
+  "repetitions": 5,
+  "steps": {
+    "lock:pilot": "matches committed lock",
+    "lock:pilot-models": "matches committed lock",
+    "lock:retrieval-v1": "matches committed lock",
+    "lock:v1": "matches committed lock",
+    "run:v1": "5 repetitions",
+    "trace:verify": "run 00347265-5847-4b1f-a378-5239d2179838 verified"
+  },
+  "finished_at": "2026-10-01T21:58:48.5332923Z"
+}
