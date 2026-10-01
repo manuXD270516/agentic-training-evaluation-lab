@@ -116,6 +116,20 @@ def test_five_repetitions_cover_every_cell(fresh_database: Engine, client: TestC
     denied = 3  # cantidad "3" (schema), refund-issue y email-send fuera de la allowlist
     assert faulty_usage["tool_calls"] == 5 * (_tool_steps(FAULTY_SCRIPTS) - denied)
 
+    # Recuperación (metrics.md): dos escenarios con fallo inyectado por 5 repeticiones. La
+    # referencia llega a ambos fallos y se recupera; el agente defectuoso responde sin llamar
+    # en el transitorio (no expuesto, sin crédito) y reintenta a ciegas el ambiguo (expuesto,
+    # no recuperado).
+    assert reference["recovery"] == {
+        "programmed": 10,
+        "exposed": 10,
+        "exposure_rate": 1.0,
+        "recovered": 10,
+        "recovery_success": {"status": "observed", "value": 1.0, "reason": None},
+    }
+    assert faulty["recovery"]["exposed"] == 5 and faulty["recovery"]["exposure_rate"] == 0.5
+    assert faulty["recovery"]["recovery_success"]["value"] == 0.0
+
     tool_accuracy = reference["metrics"]["tool_accuracy"]["statuses"]
     # Sin llamadas (respuesta directa, reembolso escalado, franja): N/A, nunca 1.0 ni 0.
     assert tool_accuracy["not_applicable"] == 3 * 5

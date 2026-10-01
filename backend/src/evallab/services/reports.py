@@ -27,7 +27,8 @@ from evallab.runner.evidence import normalize_evidence
 from evallab.services.errors import ExperimentNotSealedError, NotFoundError
 from evallab.services.execution import TERMINAL_EVENT_TYPES
 
-REPORT_VERSION = "1.0.0"
+# 1.1.0 (M12): añade `recovery` por agente (exposición y recovery_success).
+REPORT_VERSION = "1.1.0"
 STATUSES = ("pass", "fail", "unknown", "not_applicable", "error")
 RATIO_METRICS = (
     "tool_accuracy",
@@ -403,6 +404,64 @@ def judge_consumption(db: Session, cells: Sequence[Cell]) -> dict[str, Any]:
     }
 
 
+def _observed_faults(db: Session, run_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, set[str]]:
+    """fault_id de cada `tool.failed` inyectado que el run llegó a ejecutar."""
+    observed: dict[uuid.UUID, set[str]] = defaultdict(set)
+    if not run_ids:
+        return observed
+    rows = db.execute(
+        select(m.TraceEvent.run_id, m.TraceEvent.payload).where(
+            m.TraceEvent.run_id.in_(run_ids), m.TraceEvent.type == "tool.failed"
+        )
+    )
+    for run_id, payload in rows:
+        if isinstance(payload, dict) and payload.get("fault_id"):
+            observed[run_id].add(str(payload["fault_id"]))
+    return observed
+
+
+def recovery_exposure(db: Session, cells: Sequence[Cell]) -> dict[str, Any]:
+    """recovery_success y exposure_rate de metrics.md (M12, 13.4).
+
+    Programados: celdas cuyo escenario declara `recovery`. Expuestos: runs cuya traza registra
+    el fallo declarado (`tool.failed` con ese `fault_id`). Recuperados: expuestos con
+    `task_success=pass` y sin violación de política. Sin exposición, recovery_success es N/A:
+    un agente que no llega al fallo no recibe crédito y su baja exposición queda visible.
+    """
+    programmed: list[tuple[Cell, str]] = []
+    for cell in cells:
+        scenario = db.get(m.Scenario, (cell.scenario_id, cell.scenario_version))
+        spec = scenario.recovery if scenario is not None else None
+        if isinstance(spec, dict) and spec.get("fault_id"):
+            programmed.append((cell, str(spec["fault_id"])))
+    observed = _observed_faults(db, [c.run.id for c, _ in programmed if c.run is not None])
+    exposed = [
+        cell
+        for cell, fault in programmed
+        if cell.run is not None and fault in observed.get(cell.run.id, set())
+    ]
+    recovered = 0
+    for cell in exposed:
+        report = cell.evaluation.report if cell.evaluation is not None else None
+        policy = ((report or {}).get("dimensions") or {}).get("policy")
+        if _task_status(cell) == "pass" and policy != "fail":
+            recovered += 1
+    n_programmed, n_exposed = len(programmed), len(exposed)
+    if n_programmed == 0:
+        return {"status": "not_applicable", "reason": "sin casos de recuperación programados"}
+    return {
+        "programmed": n_programmed,
+        "exposed": n_exposed,
+        "exposure_rate": float(Fraction(n_exposed, n_programmed)),
+        "recovered": recovered,
+        "recovery_success": {
+            "status": "not_applicable" if n_exposed == 0 else "observed",
+            "value": None if n_exposed == 0 else float(Fraction(recovered, n_exposed)),
+            "reason": "ningún fallo inyectado observado" if n_exposed == 0 else None,
+        },
+    }
+
+
 def _part_status(applicable: bool, unknown: bool, known: str) -> str:
     if not applicable:
         return "not_applicable"
@@ -537,6 +596,7 @@ def experiment_report(db: Session, experiment_id: uuid.UUID, mode: str = "live")
                     for metric in (*RATIO_METRICS, *RETRIEVAL_METRICS)
                 },
                 "usage": usage,
+                "recovery": recovery_exposure(db, agent_cells),
                 # El judge se informa aparte (scope judge) y sólo se suma en `total_consumption`.
                 "judge_usage": judge,
                 "total_consumption": combine_consumption(usage, judge),

@@ -58,6 +58,17 @@ SUCCESS_HEADER = (
 )
 
 
+def _recovery(recovery: dict[str, Any] | None) -> str:
+    if not recovery or recovery.get("status") == "not_applicable":
+        return "N/A (sin casos de recuperación programados)"
+    success = recovery["recovery_success"]
+    value = "N/A (sin exposición)" if success["value"] is None else _fmt(success["value"])
+    return (
+        f"expuestos {recovery['exposed']} de {recovery['programmed']} programados "
+        f"(exposure_rate {_fmt(recovery['exposure_rate'])}); recovery_success {value}"
+    )
+
+
 def render(report: dict[str, Any], *, title: str, names: dict[str, str] | None = None) -> str:
     labels = report["labels"]
     dataset = report["dataset"]
@@ -130,6 +141,7 @@ def render(report: dict[str, Any], *, title: str, names: dict[str, str] | None =
             f"- latency_ms del runner: n={latency['n']}, cobertura {_fmt(latency['coverage'])}, "
             f"media {_fmt(latency['mean'], 1)}, p50 {_fmt(latency['p50'], 1)}, "
             f"p95 {_fmt(latency['p95'], 1)} ({latency['method']})",
+            f"- Recuperación: {_recovery(agent.get('recovery'))}",
             "",
             "### Por escenario",
             "",
