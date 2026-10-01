@@ -9,7 +9,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import sessionmaker
 
 from evallab import __version__, telemetry
-from evallab.api import agents, catalog, evaluations, experiments
+from evallab.api import agents, catalog, comparisons, evaluations, experiments
 from evallab.db.engine import create_db_engine
 from evallab.health import DatabaseCheck, check_database
 from evallab.services.errors import DomainError
@@ -47,6 +47,7 @@ def create_app(
     app.include_router(catalog.router)
     app.include_router(evaluations.router)
     app.include_router(agents.router)
+    app.include_router(comparisons.router)
 
     @app.middleware("http")
     async def http_span(

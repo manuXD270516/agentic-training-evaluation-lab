@@ -454,7 +454,7 @@ def _sealed_experiment(db: Session, experiment_id: uuid.UUID) -> m.Experiment:
     return exp
 
 
-def _trace_completeness(db: Session, run_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, str | None]:
+def trace_completeness(db: Session, run_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, str | None]:
     if not run_ids:
         return {}
     rows = db.execute(
@@ -471,7 +471,7 @@ def experiment_cells(db: Session, experiment_id: uuid.UUID, mode: str = "live") 
     """
     exp = _sealed_experiment(db, experiment_id)
     cells = collect_cells(db, exp, mode)
-    traces = _trace_completeness(db, [c.run.id for c in cells if c.run is not None])
+    traces = trace_completeness(db, [c.run.id for c in cells if c.run is not None])
     rows = []
     for cell in cells:
         run = cell.run

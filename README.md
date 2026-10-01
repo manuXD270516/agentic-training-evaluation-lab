@@ -14,7 +14,8 @@ Laboratorio para medir éxito, herramientas, argumentos, evidencia, recuperació
 | M8 | Judge auxiliar sin tools (rúbrica y prompt versionados, abstención, suite de inyección, `scope=judge`, nunca cambia gates) con consumo aparte del agente. **Pendiente:** doble anotación humana del [set de calibración](docs/judge-calibration.md); el judge es `experimental` |
 | M9 | Corpus, chunks, embeddings (`hash-embed@1.0.0`, léxico y determinista) y retriever exacto versionados en PGVector; `agentic-retrieval-v1` (10 escenarios) con recall/MRR@k y citas verificadas contra qrels privados; [ejecución scripted](results/m9-retrieval-scripted/report.md) |
 | M10 | Dashboard React de sólo lectura (`frontend/`): experimentos, task_success por agente y categoría con cobertura y rango de missingness, métricas con una columna por estado (pass, fail, unknown, N/A, error), celdas ausentes visibles, filtros por categoría, agente, estado y modo live/replay, y navegación score → evento de la traza paginada con versiones y trazas incompletas señaladas |
-| M11–M12 | Pendientes: protocolo estadístico de comparación, benchmark de 70 casos y demo |
+| M11 | Comparación controlada `paired-comparison@1.0.0`: comparability gate (dataset, benchmark, modo, suite y perfil), pares completos sin imputación, gate de política por violación crítica nueva, bootstrap pareado por escenario estratificado por categoría (10 000 remuestreos, seed 2026) con márgenes de no inferioridad y regresión, gate de latencia p95 y export con manifests, reportes, evidencia y digest. [Export de la comparación M7](results/m11-react-vs-planner-controlled/controlled.md): `fail` por la inyección obedecida del candidato; con el piloto (2 escenarios por categoría) no se calcula intervalo |
+| M12 | Pendiente: benchmark de 70 casos, demo y reproducción desde entorno limpio |
 
 API disponible (localhost:8000; esquema OpenAPI en `/docs`):
 
@@ -42,6 +43,7 @@ API disponible (localhost:8000; esquema OpenAPI en `/docs`):
 | `GET /runs/{id}/trace/export`, `GET /runs/{id}/trace/manifest` | Export JSONL completo (redactado) y manifest con digest y SHA-256; verificable con `uv run evallab-verify-trace manifest.json events.jsonl` |
 | `POST /runs/{id}/replays` | Replay offline de un run live con traza completa (202, `mode=replay`); diverge como `replay_mismatch`, nunca cae a live; exige `Idempotency-Key` |
 | `POST /runs/{id}/evaluations` | Evalúa un run terminal con suite y perfil versionados; exige `Idempotency-Key`; cada reevaluación crea una evaluación nueva; `{"judge_model": ...}` añade el judge auxiliar si el escenario declara una dimensión subjetiva |
+| `GET /comparisons?baseline=&candidate=&variable=&baseline_mode=&candidate_mode=` | Comparación controlada de dos experimentos sellados (protocolo, comparabilidad, pares, gates, decisión y `export_digest`); también `evallab-benchmark compare-experiments` |
 | `GET /runs/{id}/evaluations`, `GET /evaluations/{id}` | Historial de evaluaciones con report, scores y su estado (`pass/fail/unknown/not_applicable/error`) |
 
 Primer change: [define-evaluation-lab-foundation](openspec/changes/define-evaluation-lab-foundation/proposal.md).

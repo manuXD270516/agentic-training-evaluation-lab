@@ -3,6 +3,9 @@
     evallab-benchmark publish pilot          # publica (o reutiliza) y verifica el lock
     evallab-benchmark lock pilot             # imprime el lock calculado (JSON)
     evallab-benchmark run pilot --repetitions 5 --out ../results/m5-pilot-scripted
+    evallab-benchmark compare pilot-models --baseline A --candidate B --out <dir>
+    evallab-benchmark compare-experiments --baseline-experiment ID --candidate-experiment ID \
+        --out <dir>                          # export controlado (M11) de experimentos existentes
 
 `run` publica la suite, crea y sella un experimento con sus agentes, encola las celdas en el
 orden de metrics.md §4, las ejecuta con las fases del worker, las evalúa y escribe el reporte
@@ -17,6 +20,7 @@ import json
 import platform
 import sys
 import time
+import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -31,7 +35,9 @@ from evallab.benchmarks.registry import committed_lock, get_suite
 from evallab.benchmarks.report_md import render
 from evallab.benchmarks.suite import Published, Suite, publish_suite
 from evallab.comparison.descriptive import compare as compare_experiments
+from evallab.comparison.protocol import compare_controlled
 from evallab.comparison.render import render as render_comparison
+from evallab.comparison.render import render_controlled
 from evallab.db.engine import create_db_engine
 from evallab.services.reports import experiment_report
 from evallab.settings import DatabaseSettings
@@ -63,6 +69,16 @@ def _parser() -> argparse.ArgumentParser:
     compare.add_argument("--variable", default="pattern", choices=["pattern", "model", "prompt"])
     compare.add_argument("--repetitions", type=int, default=5)
     compare.add_argument("--out", type=Path, required=True)
+    existing = commands.add_parser(
+        "compare-experiments",
+        help="exporta la comparación controlada (M11) de dos experimentos sellados ya ejecutados",
+    )
+    existing.add_argument("--baseline-experiment", type=uuid.UUID, required=True)
+    existing.add_argument("--candidate-experiment", type=uuid.UUID, required=True)
+    existing.add_argument("--variable", default="pattern", choices=["pattern", "model", "prompt"])
+    existing.add_argument("--baseline-mode", default="live", choices=["live", "replay"])
+    existing.add_argument("--candidate-mode", default="live", choices=["live", "replay"])
+    existing.add_argument("--out", type=Path, required=True)
     return parser
 
 
@@ -189,6 +205,9 @@ def _compare(engine: Engine, name: str, suite: Suite, args: argparse.Namespace) 
         comparison = compare_experiments(
             db, experiments["baseline"].id, experiments["candidate"].id, variable=args.variable
         )
+        controlled = compare_controlled(
+            db, experiments["baseline"].id, experiments["candidate"].id, variable=args.variable
+        )
         reports = {role: experiment_report(db, exp.id) for role, exp in experiments.items()}
     out: Path = args.out
     out.mkdir(parents=True, exist_ok=True)
@@ -224,13 +243,48 @@ def _compare(engine: Engine, name: str, suite: Suite, args: argparse.Namespace) 
         encoding="utf-8",
         newline="\n",
     )
+    _write_controlled(out, controlled, f"{args.baseline} vs {args.candidate}", names)
     return comparison
+
+
+def _write_controlled(
+    out: Path, document: dict[str, Any], label: str, names: dict[str, str]
+) -> None:
+    out.mkdir(parents=True, exist_ok=True)
+    _write_json(out / "controlled.json", document)
+    (out / "controlled.md").write_text(
+        render_controlled(document, title=f"Comparación controlada: {label}", names=names),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
+def _compare_existing(engine: Engine, args: argparse.Namespace) -> dict[str, Any]:
+    with Session(engine) as db:
+        document = compare_controlled(
+            db,
+            args.baseline_experiment,
+            args.candidate_experiment,
+            variable=args.variable,
+            baseline_mode=args.baseline_mode,
+            candidate_mode=args.candidate_mode,
+        )
+    label = f"{args.baseline_experiment} vs {args.candidate_experiment}"
+    _write_controlled(args.out, document, label, {})
+    return document
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    suite = get_suite(args.suite)
     engine = create_db_engine(DatabaseSettings())
+    if args.command == "compare-experiments":
+        try:
+            document = _compare_existing(engine, args)
+        finally:
+            engine.dispose()
+        print(json.dumps(document["decision"], indent=2, sort_keys=True))
+        return 0 if document["status"] != "incompatible" else 1
+    suite = get_suite(args.suite)
     try:
         if args.command == "compare":
             comparison = _compare(engine, args.suite, suite, args)
