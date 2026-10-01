@@ -156,7 +156,15 @@ class PlanCreated:
     source_event_id: uuid.UUID | None = None
 
 
-Action = ToolCall | FinalAnswer | ModelCall | PlanCreated
+@dataclass(frozen=True)
+class SkipPlanStep:
+    """Paso del plan que no se ejecuta porque una dependencia no terminó bien."""
+
+    plan_step_id: str
+    failed_dependencies: tuple[str, ...]
+
+
+Action = ToolCall | FinalAnswer | ModelCall | PlanCreated | SkipPlanStep
 PatternObservation = Observation | ModelObservation
 
 

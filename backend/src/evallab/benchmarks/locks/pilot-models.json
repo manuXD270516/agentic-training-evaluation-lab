@@ -1,5 +1,6 @@
 {
   "agents": {
+    "pilot-planner-executor-fixture": "826bf2ea4f9b61103b76bd98ca054db7a244e096d82114cb6469d34341aab1c9",
     "pilot-react-fixture": "01cca7ea10765a2ee7d21ac0abca76035218167db99b9c7306316df1e9af7f4e"
   },
   "benchmark": {
@@ -15,6 +16,8 @@
   },
   "fixtures": {
     "corpus:pilot-kb": "d972ead6a0cc93a03360e90296d6e84279e983e25b48d651f02123759c4b1cb1",
+    "model:pilot-fixture-executor-model": "3a57f72b74c76207ae47d3e3e6e74a3dcaa6cb8078c968b1fbbec1667778925f",
+    "model:pilot-fixture-planner-model": "47c23c3a312c5d3b4836c6bfcfd550c5b131ee8de319fd8aa1c83dfb0d86457e",
     "model:pilot-fixture-react-model": "17445b9e3bca2eea491a1440c8e675654ae5586c9556526c7b9238b3d6ed3c33",
     "tool:calculator": "ac0af7eb1fb17edd9c7983a94df62fda8c376f5118561fb647bbc6368b20667c",
     "tool:email-send": "1960487240c1b4fef299cf29a88544b710d9dd6eeb04477fe2ba08b2707d4da7",
@@ -26,9 +29,13 @@
     "tool:unit-converter": "e2ccb97b2302b773b7eaf6d208d7241c1c35425f74f2b18707e97299d4b1fd94"
   },
   "models": {
+    "pilot-fixture-executor-model": "59babb3d8191f25c73bc202d5933db79c2db6e0383c6abaa4299dadfa19da4e3",
+    "pilot-fixture-planner-model": "db44576c98698aa7a9fe31ad872908f7eca9ecc388a6b349e153efdde5b10451",
     "pilot-fixture-react-model": "102c83917b36f783641208952fd2c6ea2c383823bcbe7b91bc756c957d568769"
   },
   "prices": {
+    "pilot-fixture-executor-model": "da46912e616e7930062e7b6528f79b4dc65d5fb191d3defef8aa8ecd575f7d51",
+    "pilot-fixture-planner-model": "da46912e616e7930062e7b6528f79b4dc65d5fb191d3defef8aa8ecd575f7d51",
     "pilot-fixture-react-model": "da46912e616e7930062e7b6528f79b4dc65d5fb191d3defef8aa8ecd575f7d51"
   },
   "scenarios": {

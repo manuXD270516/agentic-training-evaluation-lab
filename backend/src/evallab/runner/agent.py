@@ -21,6 +21,7 @@ from evallab.runner.contracts import (
     PlanCreated,
     RunContext,
     RunResult,
+    SkipPlanStep,
     ToolCall,
     ToolGateway,
     ToolOutcome,
@@ -215,12 +216,17 @@ class _Run:
         return self._deadline()
 
     def end_step(
-        self, step_id: str, started: MemoryEvent, status: str, role: str = "executor"
+        self,
+        step_id: str,
+        started: MemoryEvent,
+        status: str,
+        role: str = "executor",
+        extra: dict[str, Any] | None = None,
     ) -> None:
         self.sink.append(
             "step.completed",
             role,
-            {"step_id": step_id, "role": role, "status": status},
+            {"step_id": step_id, "role": role, "status": status, **(extra or {})},
             parent_event_id=started.event_id,
         )
 
@@ -688,6 +694,11 @@ def _step_role(adapter: Any) -> str:
     return str(role()) if callable(role) else "executor"
 
 
+def _step_metadata(adapter: Any) -> dict[str, Any]:
+    metadata = getattr(adapter, "step_metadata", None)
+    return dict(metadata()) if callable(metadata) else {}
+
+
 def _continues_step(adapter: Any) -> bool:
     """El patrón puede encadenar acciones en el mismo ciclo de decisión (p. ej. ReAct ejecuta
     las tool calls de una respuesta del modelo dentro del paso que la pidió)."""
@@ -713,13 +724,15 @@ def _loop(
     observations: list[PatternObservation] = []
     step: tuple[str, MemoryEvent, str] | None = None
     status = "completed"
+    step_extra: dict[str, Any] = {}
 
     def close(final_status: str) -> None:
-        nonlocal step
+        nonlocal step, step_extra
         if step is not None:
             step_id, started, role = step
-            run.end_step(step_id, started, final_status, role)
+            run.end_step(step_id, started, final_status, role, step_extra)
             step = None
+            step_extra = {}
 
     while True:
         if step is None or not _continues_step(adapter):
@@ -731,7 +744,9 @@ def _loop(
             role = _step_role(adapter)
             step_id = f"s{run.steps}"
             started = sink.append(
-                "step.started", role, {"step_id": step_id, "role": role, "status": "running"}
+                "step.started",
+                role,
+                {"step_id": step_id, "role": role, "status": "running", **_step_metadata(adapter)},
             )
             step = (step_id, started, role)
             status = "completed"
@@ -781,6 +796,15 @@ def _loop(
             continue
         if isinstance(action, PlanCreated):
             run.record_plan(action, started)
+            continue
+        if isinstance(action, SkipPlanStep):
+            # No se inicia ninguna llamada: el paso queda registrado como omitido y por qué.
+            status = "skipped"
+            step_extra = {
+                "plan_step_id": action.plan_step_id,
+                "reason": "dependency_failed",
+                "failed_dependencies": list(action.failed_dependencies),
+            }
             continue
         close("failed")
         return run.fail(UnsupportedPatternError.error_class, "acción de patrón no soportada")

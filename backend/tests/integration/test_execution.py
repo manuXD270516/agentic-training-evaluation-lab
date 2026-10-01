@@ -368,17 +368,18 @@ def test_queued_run_has_no_trace_until_execution(
     assert response.json()["error"]["code"] == "not_found"
 
 
-def test_planner_executor_is_not_reported_as_implemented(
+def test_model_pattern_without_models_is_not_reported_as_executed(
     migrated_database: Engine, client: TestClient
 ) -> None:
     with Session(migrated_database) as db, db.begin():
+        # Sin roles→modelo ni prompt_hash del patrón: fallo tipado antes de cualquier llamada.
         world = _world(db, pattern="planner_executor")
         run = execute_run(db, world.run_ids[0])
         assert run.status == RunStatus.FAILED
-        assert run.error_class == "infrastructure_error"
+        assert run.error_class == "invalid_arguments"
         assert run.result is not None
         assert run.result["label"] == "planner_executor"
-        assert run.result["attribution"] == "unimplemented"
+        assert run.result["attribution"] == "no_model_configured"
     body = client.get(f"/runs/{world.run_ids[0]}").json()
     assert body["result"]["usage"]["model_calls"] == 0
 

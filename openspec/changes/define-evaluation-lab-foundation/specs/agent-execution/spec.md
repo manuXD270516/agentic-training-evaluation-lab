@@ -12,6 +12,10 @@ El runner SHALL consumir configuración y vista pública del escenario, emitir T
 - **WHEN** se sustituye ReAct por Planner/Executor con iguales condiciones experimentales
 - **THEN** los roles comparten el presupuesto global y reportan consumo con el mismo perfil de métricas.
 
+#### Scenario: Failed plan dependency
+- **WHEN** un paso del plan depende de otro que no terminó bien
+- **THEN** no se ejecuta ni se consulta al ejecutor para él y queda registrado como omitido con sus dependencias fallidas; un plan con dependencias hacia pasos posteriores o ids repetidos se rechaza sin emitir `plan.created`.
+
 ### Requirement: Tool validation and isolation
 
 El sistema SHALL validar identidad, argumentos y autorización antes de invocar una tool; SHALL aislar fixtures por run y denegar acceso al host/red fuera de gateways autorizados.

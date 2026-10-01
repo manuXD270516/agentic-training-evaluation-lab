@@ -57,7 +57,8 @@
 
 ## 8. M7 — Planner/Executor
 
-- [ ] 8.1 Implementar roles y plan explícito con presupuesto global (agent-execution, trace-capture); verificar consumo sumado y dependencias de pasos.
+- [x] 8.1 Implementar roles y plan explícito con presupuesto global (agent-execution, trace-capture); verificar consumo sumado y dependencias de pasos.
+  - Evidencia: pytest local (tests/test_planner_executor.py y tests/integration/test_planner_executor_pilot.py, 2026-10-01; 345 tests en verde) con modelos de fixture: plan de 2 pasos registra `plan.created` del planner con `depends_on`, ciclos planner → p1 → p2 → final con su rol, 4 llamadas (1 planner + 3 executor), 4 pasos, tokens del run = suma de `by_role` (920) y coste = suma por tarifa; si p1 pide una tool denegada, p2 queda `skipped` con `failed_dependencies=["p1"]`, sin tool call ni consulta al ejecutor (3 llamadas); planes con dependencia hacia delante, id repetido, texto no JSON o sin `steps` fallan `model_error` sin `plan.created`; `max_model_calls=2` corta tras 1 planner + 1 executor (`budget_exceeded`). En el piloto: orden parcial p1, p2 → p3 en `pilot-ms-convert-then-sum` (5 llamadas, 5 pasos, 3 tools), `source_event_id` del plan apunta al `model.completed` del planner, 12/14 escenarios pasan y los 2 fallos fijados por el guion se conservan; el replay reproduce ambos roles sin llamar al proveedor y con la misma salida.
 - [ ] 8.2 Ejecutar comparación descriptiva pareada frente a ReAct (experiment-comparison); verificar igualdad de manifests salvo patrón/modelos por rol declarados y conservación de fallos.
 
 ## 9. M8 — LLM Judge

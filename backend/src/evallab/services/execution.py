@@ -225,7 +225,7 @@ def _labels(pattern: str, providers: Collection[str] = ()) -> dict[str, str]:
         return {"label": pattern, "attribution": "fixture_model"}
     if providers:
         return {"label": pattern, "attribution": "model_pattern"}
-    return {"label": pattern, "attribution": "unimplemented"}
+    return {"label": pattern, "attribution": "no_model_configured"}
 
 
 def _result_document(result: RunResult, claim: Claim) -> dict[str, Any]:

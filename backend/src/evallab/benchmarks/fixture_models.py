@@ -81,3 +81,59 @@ def react_script(scripts: Mapping[str, Sequence[Mapping[str, Any]]]) -> dict[str
         "kind": "model_script",
         "responses": {slug: react_turns(steps) for slug, steps in sorted(scripts.items())},
     }
+
+
+def plan_steps(
+    steps: Sequence[Mapping[str, Any]], dependencies: Mapping[str, Sequence[str]] | None = None
+) -> list[dict[str, Any]]:
+    """Un paso de plan por tool del script; por defecto cada paso depende del anterior."""
+    tool_steps = [s for s in steps if s["type"] == "tool"]
+    plan: list[dict[str, Any]] = []
+    for index, step in enumerate(tool_steps):
+        step_id = f"p{index + 1}"
+        default = [f"p{index}"] if index else []
+        plan.append(
+            {
+                "id": step_id,
+                "description": f"usar {step['tool']}",
+                "tool": step["tool"],
+                "depends_on": list((dependencies or {}).get(step_id, default)),
+            }
+        )
+    return plan
+
+
+def planner_turns(
+    steps: Sequence[Mapping[str, Any]], dependencies: Mapping[str, Sequence[str]] | None = None
+) -> list[dict[str, Any]]:
+    content = json.dumps({"steps": plan_steps(steps, dependencies)}, ensure_ascii=False)
+    return [{"content": content, "finish_reason": "stop", "usage": synthetic_usage(0, output=90)}]
+
+
+def executor_turns(steps: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Una decisión por paso del plan (su tool call) y la respuesta final."""
+    turns = react_turns(steps)
+    # El ejecutor recibe el plan en cada ciclo: su entrada es algo mayor que en ReAct.
+    for index, turn in enumerate(turns):
+        usage = turn["usage"]
+        turn["usage"] = {**usage, "input_tokens": usage["input_tokens"] + 120 + 30 * index}
+    return turns
+
+
+def planner_executor_scripts(
+    scripts: Mapping[str, Sequence[Mapping[str, Any]]],
+    dependencies: Mapping[str, Mapping[str, Sequence[str]]] | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Guiones del planner (un plan por escenario) y del executor (paso a paso y final)."""
+    deps = dependencies or {}
+    planner = {
+        "kind": "model_script",
+        "responses": {
+            slug: planner_turns(steps, deps.get(slug)) for slug, steps in sorted(scripts.items())
+        },
+    }
+    executor = {
+        "kind": "model_script",
+        "responses": {slug: executor_turns(steps) for slug, steps in sorted(scripts.items())},
+    }
+    return planner, executor

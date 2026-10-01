@@ -312,16 +312,27 @@ def _group(cells: Iterable[Cell], key: Any) -> dict[Any, list[Cell]]:
     return groups
 
 
-def _agent_label(db: Session, agent_id: uuid.UUID, version: str) -> dict[str, Any]:
+def _agent_label(
+    db: Session, agent_id: uuid.UUID, version: str, cells: Sequence[Cell]
+) -> dict[str, Any]:
     cfg = db.get(m.AgentConfiguration, (agent_id, version))
     pattern = cfg.pattern if cfg is not None else "unknown"
+    # La atribución viene de los runs (scripted, modelo de fixture o modelo real), no del patrón.
+    attributions = sorted(
+        {
+            str(c.run.result.get("attribution"))
+            for c in cells
+            if c.run is not None and isinstance(c.run.result, dict)
+        }
+    )
+    fallback = "harness_baseline" if pattern == "scripted" else "unknown"
     return {
         "id": str(agent_id),
         "version": version,
         "content_hash": cfg.content_hash if cfg is not None else None,
         "pattern": pattern,
         "pattern_version": cfg.pattern_version if cfg is not None else None,
-        "attribution": "harness_baseline" if pattern == "scripted" else "model_pattern",
+        "attribution": ",".join(attributions) or fallback,
     }
 
 
@@ -366,7 +377,7 @@ def experiment_report(db: Session, experiment_id: uuid.UUID) -> dict[str, Any]:
         by_scenario = _group(agent_cells, lambda c: (c.slug, c.category))
         agents_report.append(
             {
-                "agent": _agent_label(db, agent_id, version),
+                "agent": _agent_label(db, agent_id, version, agent_cells),
                 "summary": _summaries(agent_cells),
                 "by_category": {cat: _summaries(by_category[cat]) for cat in categories},
                 "metrics": {
