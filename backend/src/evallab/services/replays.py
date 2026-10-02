@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from evallab.canonical import canonical_digest
 from evallab.db import models as m
-from evallab.domain.lifecycle import RunStatus
+from evallab.domain.lifecycle import ExperimentStatus, RunStatus
 from evallab.runner.replay import Recording
 from evallab.runner.sink import trace_digest
 from evallab.services.errors import (
@@ -93,9 +93,11 @@ def create_replay(db: Session, source_run_id: uuid.UUID) -> m.Run:
         raise ReplayUnavailableError("el run de origen no ha terminado", status=source.status)
     load_recording(db, source.id)
     exp = get_experiment(db, source.experiment_id)
-    if exp.status not in ACCEPTS_RUNS:
+    # Un replay reproduce una celda ya ejecutada: también se admite en experimentos completed.
+    if exp.status not in {*ACCEPTS_RUNS, ExperimentStatus.COMPLETED}:
         raise ExperimentNotAcceptingRunsError(
-            "sólo se crean runs en experimentos sellados o en ejecución", status=exp.status
+            "sólo se reproducen runs de experimentos sellados, en ejecución o completados",
+            status=exp.status,
         )
     existing = db.scalar(select(m.Run).where(m.Run.source_run_id == source.id))
     if existing is not None:

@@ -16,6 +16,7 @@ from evallab.db import models as m
 from evallab.domain.lifecycle import ExperimentStatus, RunStatus
 from evallab.schemas import FixtureCreate
 from evallab.services.catalog import publish_fixture
+from evallab.services.evaluations import evaluate_run
 from evallab.services.execution import (
     AttemptOutcome,
     Claim,
@@ -609,7 +610,19 @@ def test_lost_worker_fails_explicitly_after_max_attempts(fresh_database: Engine)
         assert run.error_class == "infrastructure_error"
         assert run.result is not None
         assert "lease" in run.result["error"]
-        assert db.scalar(select(m.Trace).where(m.Trace.run_id == run.id)) is None
+        # Los eventos en memoria del worker caído se perdieron: la traza se sella `incomplete`
+        # con el único hecho verificable, sin fabricar llamadas ni resultados.
+        trace = db.scalar(select(m.Trace).where(m.Trace.run_id == run.id))
+        assert trace is not None and trace.completeness == "incomplete"
+        events = list(db.scalars(select(m.TraceEvent).where(m.TraceEvent.run_id == run.id)))
+        assert [e.type for e in events] == ["run.failed"]
+        assert events[0].payload["error_class"] == "infrastructure_error"
+    with Session(fresh_database, expire_on_commit=False) as db, db.begin():
+        evaluation = evaluate_run(db, world.run_ids[0], None)
+        report = evaluation.report or {}
+        # La evaluación no fabrica resultado: run no evaluable y procesos unknown.
+        assert report["task_success"] == "unknown"
+        assert evaluation.trace_digest == trace.digest
 
 
 def test_worker_poll_claims_executes_and_persists(fresh_database: Engine) -> None:

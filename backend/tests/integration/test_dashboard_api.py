@@ -51,6 +51,8 @@ def test_experiment_list_and_cells_keep_missing_cells(
     listed = client.get("/experiments").json()
     assert [e["id"] for e in listed] == [str(experiment_id)]
     assert listed[0]["manifest_hash"] is not None
+    # Faltan dos celdas por ejecutar: el experimento sigue running.
+    assert listed[0]["status"] == "running"
 
     body = client.get(f"/experiments/{experiment_id}/cells").json()
     assert body["mode"] == "live" and body["planned_cells"] == 28
@@ -69,6 +71,8 @@ def test_experiment_list_and_cells_keep_missing_cells(
 
 def test_report_and_cells_filter_by_mode(fresh_database: Engine, client: TestClient) -> None:
     experiment_id, _ = _pilot(fresh_database, skip=0)
+    # Todas las celdas live programadas son terminales: running -> completed.
+    assert client.get(f"/experiments/{experiment_id}").json()["status"] == "completed"
     replay = client.get(f"/experiments/{experiment_id}/report", params={"mode": "replay"}).json()
     assert replay["labels"]["mode"] == "replay"
     # Sin replays: las 28 celdas siguen en el denominador como unknown, no desaparecen.

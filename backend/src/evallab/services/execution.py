@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, cast
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from evallab import telemetry
@@ -379,9 +379,81 @@ def _new_attempt(
     )
 
 
-def _fail_lost_run(db: Session, run: m.Run, attempts: int, now: datetime) -> None:
+def _planned_cells(db: Session, exp: m.Experiment) -> int:
+    benchmark = db.get(m.Benchmark, (exp.benchmark_id, exp.benchmark_version))
+    selection = benchmark.scenario_selection if benchmark is not None else None
+    scenarios = len(selection) if isinstance(selection, list) else 0
+    agents = db.scalar(
+        select(func.count())
+        .select_from(m.ExperimentAgent)
+        .where(m.ExperimentAgent.experiment_id == exp.id)
+    )
+    return scenarios * int(agents or 0) * exp.repetitions
+
+
+def complete_experiment_if_done(db: Session, experiment_id: uuid.UUID) -> bool:
+    """`running -> completed` cuando todas las celdas live programadas tienen un run terminal
+    y no queda ningún run activo (design: completed = celdas terminales, no éxitos)."""
+    exp = db.get(m.Experiment, experiment_id, with_for_update=True)
+    if exp is None or exp.status != ExperimentStatus.RUNNING:
+        return False
+    active = db.scalar(
+        select(func.count())
+        .select_from(m.Run)
+        .where(m.Run.experiment_id == exp.id, m.Run.status.in_(m.RUN_ACTIVE))
+    )
+    terminal_cells = db.scalar(
+        select(func.count())
+        .select_from(m.Run)
+        .where(
+            m.Run.experiment_id == exp.id,
+            m.Run.mode == "live",
+            m.Run.status.not_in(m.RUN_ACTIVE),
+        )
+    )
+    planned = _planned_cells(db, exp)
+    if active or planned == 0 or int(terminal_cells or 0) < planned:
+        return False
+    EXPERIMENT_LIFECYCLE.check(ExperimentStatus.RUNNING, ExperimentStatus.COMPLETED)
+    exp.status = ExperimentStatus.COMPLETED
+    db.flush()
+    return True
+
+
+LOST_WORKER_ERROR = "worker perdido: lease vencido sin resultado"
+
+
+def _seal_lost_trace(db: Session, run: m.Run, attempt: m.RunAttempt, now: datetime) -> None:
+    """La captura en memoria del worker caído se perdió: se sella una traza `incomplete` con
+    el único hecho verificable (el harness declaró el run perdido), sin fabricar eventos."""
+    sink = MemoryTraceSink(
+        started_at=run.started_at or now,
+        schema_version=TRACE_SCHEMA_VERSION,
+        run_id=run.id,
+        attempt_id=attempt.id,
+    )
+    mark_incomplete(sink)
+    sink.append(
+        "run.failed",
+        "harness",
+        {
+            "error": LOST_WORKER_ERROR,
+            "error_class": "infrastructure_error",
+            "completeness": "incomplete",
+            "attempt_number": attempt.attempt_number,
+            "lost_events": "unknown",
+        },
+    )
+    _store_trace(db, run, sink, now)
+
+
+def _fail_lost_run(
+    db: Session, run: m.Run, attempt: m.RunAttempt, attempts: int, now: datetime
+) -> None:
     agent = db.get(m.AgentConfiguration, (run.agent_id, run.agent_version))
     pattern = agent.pattern if agent is not None else "unknown"
+    if db.scalar(select(m.Trace).where(m.Trace.run_id == run.id)) is None:
+        _seal_lost_trace(db, run, attempt, max(now, run.started_at or now))
     RUN_LIFECYCLE.check(RunStatus.RUNNING, RunStatus.FAILED)
     run.status = RunStatus.FAILED
     run.error_class = "infrastructure_error"
@@ -393,7 +465,7 @@ def _fail_lost_run(db: Session, run: m.Run, attempts: int, now: datetime) -> Non
         "evidence_refs": [],
         "usage": Usage(model_calls=0, tool_calls=0).as_json(),
         "policy_violations": 0,
-        "error": "worker perdido: lease vencido sin resultado",
+        "error": LOST_WORKER_ERROR,
         "attempt": {"number": attempts, "fencing_token": run.fencing_token},
     }
 
@@ -415,8 +487,9 @@ def claim_next_run(
         attempt.ended_at = now
         db.flush()
         if attempt.attempt_number >= max_attempts:
-            _fail_lost_run(db, run, attempt.attempt_number, now)
+            _fail_lost_run(db, run, attempt, attempt.attempt_number, now)
             db.flush()
+            complete_experiment_if_done(db, run.experiment_id)
             continue
         return _new_attempt(
             db,
@@ -619,6 +692,7 @@ def _finish_attempt(db: Session, outcome: AttemptOutcome, *, now: datetime | Non
     attempt.status = "finished"
     attempt.ended_at = ended_at
     db.flush()
+    complete_experiment_if_done(db, run.experiment_id)
     return True
 
 

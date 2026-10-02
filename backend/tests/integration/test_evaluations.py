@@ -126,7 +126,9 @@ def test_queued_run_is_not_evaluable(migrated_database: Engine, client: TestClie
     assert response.json()["error"]["code"] == "run_not_evaluable"
 
 
-def test_run_without_sealed_trace_is_not_evaluable(empty_database: Engine) -> None:
+def test_lost_run_is_evaluated_without_fabricating_a_result(empty_database: Engine) -> None:
+    """Un worker perdido deja una traza sellada `incomplete` (13.4): evaluable, pero la
+    evaluación no inventa éxito ni fallo del agente."""
     with empty_database.begin() as conn:
         upgrade_head(conn)
     with Session(empty_database) as db, db.begin():
@@ -139,8 +141,11 @@ def test_run_without_sealed_trace_is_not_evaluable(empty_database: Engine) -> No
             )
     with TestClient(create_app(engine=empty_database)) as client:
         response = _post(client, world.run_ids[0])
-    assert response.status_code == 409
-    assert "traza" in response.json()["error"]["message"]
+    assert response.status_code == 201
+    body = response.json()
+    assert body["report"]["task_success"] == "unknown"
+    task = next(s for s in body["scores"] if s["metric_id"] == "task_success")
+    assert task["status"] == "unknown" and task["value"] is None
 
 
 def test_evaluator_crash_is_persisted_as_error(

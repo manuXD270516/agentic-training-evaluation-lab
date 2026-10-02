@@ -92,7 +92,7 @@ Estados: **verificado** (un test lo comprueba tal como lo describe la spec), **p
 | Collector unavailable | `integration/test_telemetry.py::test_collector_down_keeps_complete_evidence` | verificado |
 | Correlated telemetry without payloads | `integration/test_telemetry.py::test_spans_correlate_run_tool_and_evaluator`, `::test_trace_ids_do_not_enter_the_sealed_digest` | verificado |
 | Scripted events are sealed after in-memory capture | `integration/test_execution.py::test_scripted_run_reaches_terminal_state_with_evidence`, `integration/test_traces.py::test_export_verifies_and_matches_sealed_trace` | verificado |
-| Missing tool result | `integration/test_execution.py::test_lost_worker_fails_explicitly_after_max_attempts`, `integration/test_evaluations.py::test_run_without_sealed_trace_is_not_evaluable`, `integration/test_execution.py::test_failed_run_trace_is_exposed_as_incomplete` | parcial: con captura en memoria un worker caído no persiste traza (el run falla como `infrastructure_error` y no es evaluable); la traza `incomplete` sólo existe cuando el runner falla sin caerse |
+| Missing tool result | `integration/test_execution.py::test_lost_worker_fails_explicitly_after_max_attempts` (traza sellada `incomplete` con sólo `run.failed` del harness), `integration/test_evaluations.py::test_lost_run_is_evaluated_without_fabricating_a_result` (`task_success=unknown`), `integration/test_execution.py::test_failed_run_trace_is_exposed_as_incomplete` | verificado |
 | Repeated event | `test_runner.py::test_duplicate_event_id_conflicting_digest_is_invalid`, `integration/test_traces.py::test_resent_event_with_other_digest_is_integrity_error` | verificado |
 | Truncated export | `integration/test_traces.py::test_truncated_or_altered_export_fails_verification` | verificado |
 | Sensitive payload | `test_redaction.py::test_sink_redacts_before_digest_and_marks_replay_unavailable`, `integration/test_traces.py::test_secrets_are_absent_from_trace_export_and_result` | verificado |
@@ -112,4 +112,4 @@ Estados: **verificado** (un test lo comprueba tal como lo describe la spec), **p
 
 ## Resultado
 
-63 de 66 escenarios verificados, 2 parciales (calibración humana del judge; trazas de un worker caído) y 1 pendiente (variabilidad de un proveedor remoto). El change no se archiva: 7.2 y 9.2 siguen abiertas y "Remote variability" exige una ejecución live que el responsable no ha autorizado.
+64 de 66 escenarios verificados, 1 parcial (calibración humana del judge) y 1 pendiente (variabilidad de un proveedor remoto). El change no se archiva: 7.2 y 9.2 siguen abiertas y "Remote variability" exige una ejecución live que el responsable no ha autorizado.
