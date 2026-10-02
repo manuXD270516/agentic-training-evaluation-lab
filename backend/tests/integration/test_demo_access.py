@@ -101,7 +101,7 @@ def _json_keys(value: object) -> set[str]:
 
 
 def test_published_artifacts_are_sanitized() -> None:
-    files = sorted((REPO / "results").rglob("*.*"))
+    files = sorted(p for p in (REPO / "results").rglob("*.*") if p.is_file())
     assert files
     for path in files:
         text = path.read_text(encoding="utf-8")

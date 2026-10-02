@@ -30,7 +30,8 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from evallab import __version__
-from evallab.benchmarks import runner
+from evallab.benchmarks import pilot, retrieval_v1, runner, v1
+from evallab.benchmarks.live import live_model, live_react_suite
 from evallab.benchmarks.registry import committed_lock, get_suite
 from evallab.benchmarks.report_md import render
 from evallab.benchmarks.suite import Published, Suite, publish_suite
@@ -39,6 +40,8 @@ from evallab.comparison.protocol import compare_controlled
 from evallab.comparison.render import render as render_comparison
 from evallab.comparison.render import render_controlled
 from evallab.db.engine import create_db_engine
+from evallab.domain.vocabulary import SEED_SUPPORT
+from evallab.runner.live import ModelGatewaySettings
 from evallab.services.reports import experiment_report
 from evallab.settings import DatabaseSettings
 
@@ -79,6 +82,25 @@ def _parser() -> argparse.ArgumentParser:
     existing.add_argument("--baseline-mode", default="live", choices=["live", "replay"])
     existing.add_argument("--candidate-mode", default="live", choices=["live", "replay"])
     existing.add_argument("--out", type=Path, required=True)
+    live = commands.add_parser(
+        "run-live",
+        help="ejecuta un agente ReAct con un modelo real (exige MODEL_GATEWAY_LIVE_ENABLED)",
+    )
+    live.add_argument("suite")
+    live.add_argument("--model", required=True, help="nombre que espera el proveedor")
+    live.add_argument("--revision", default=None, help="revisión/digest resuelto, si se conoce")
+    live.add_argument("--seed-support", default="unknown", choices=SEED_SUPPORT)
+    live.add_argument("--temperature", type=float, default=0.0)
+    live.add_argument("--max-tokens", type=int, default=512)
+    live.add_argument("--price-input", default=None, help="tarifa por millón de tokens de entrada")
+    live.add_argument("--price-output", default=None, help="tarifa por millón de tokens de salida")
+    live.add_argument("--currency", default="USD")
+    live.add_argument("--price-source", default=None)
+    live.add_argument("--max-cost-usd", default=None, help="límite monetario (exige tarifa)")
+    live.add_argument("--max-model-calls", type=int, default=None)
+    live.add_argument("--scenarios", default="", help="slugs separados por comas (todos si vacío)")
+    live.add_argument("--repetitions", type=int, default=1)
+    live.add_argument("--out", type=Path, required=True)
     return parser
 
 
@@ -123,10 +145,13 @@ def _run(engine: Engine, name: str, suite: Suite, args: argparse.Namespace) -> d
             hypothesis=args.hypothesis
             or f"Descripción offline de {suite.dataset_name} con agentes scripted (harness)",
             seeds=seeds,
+            budgets=getattr(args, "budgets", None),
             comparison_plan={"mode": "descriptive_only", "agents": names},
         )
         agents = [published.agents[n] for n in names]
-        cells = runner.plan_cells(published.scenarios, agents, args.repetitions)
+        only = set(getattr(args, "scenario_slugs", ()) or ())
+        scenarios = [s for s in published.scenarios if not only or s.slug in only]
+        cells = runner.plan_cells(scenarios, agents, args.repetitions)
         run_ids = runner.enqueue(db, experiment, cells)
     executed = runner.execute_in_order(engine, run_ids)
     runner.evaluate_all(engine, run_ids)
@@ -155,6 +180,7 @@ def _run(engine: Engine, name: str, suite: Suite, args: argparse.Namespace) -> d
             "wall_clock_s": round(time.monotonic() - started, 3),
             "finished_at": datetime.now(UTC).isoformat(),
             "experiment_id": str(experiment.id),
+            **getattr(args, "run_info", {}),
         },
     )
     (out / "report.md").write_text(
@@ -247,6 +273,64 @@ def _compare(engine: Engine, name: str, suite: Suite, args: argparse.Namespace) 
     return comparison
 
 
+LIVE_AGENT_TOOLS = {
+    "pilot": pilot.AGENT_TOOLS,
+    "v1": v1.AGENT_TOOLS,
+    "retrieval-v1": retrieval_v1.AGENT_TOOLS,
+}
+
+
+def _run_live(engine: Engine, name: str, suite: Suite, args: argparse.Namespace) -> dict[str, Any]:
+    """Ejecución live opcional (7.2). Se niega a correr sin el proveedor habilitado por entorno
+    y nunca escribe la clave: `run.json` sólo registra URL base, modelo y límites."""
+    settings = ModelGatewaySettings()
+    if not settings.live_ready():
+        raise SystemExit(
+            "proveedor live deshabilitado: define MODEL_GATEWAY_LIVE_ENABLED=true, "
+            "MODEL_GATEWAY_BASE_URL y MODEL_GATEWAY_API_KEY (ver docs/live-run.md)"
+        )
+    if name not in LIVE_AGENT_TOOLS:
+        raise SystemExit(f"run-live admite {sorted(LIVE_AGENT_TOOLS)}")
+    if args.max_cost_usd is not None and args.price_input is None:
+        raise SystemExit("--max-cost-usd exige --price-input y --price-output")
+    model = live_model(
+        args.model,
+        revision=args.revision,
+        seed_support=args.seed_support,
+        temperature=args.temperature,
+        max_tokens=args.max_tokens,
+        price_input=args.price_input,
+        price_output=args.price_output,
+        currency=args.currency,
+        price_source=args.price_source,
+    )
+    live_suite, agent = live_react_suite(suite, model, tuple(LIVE_AGENT_TOOLS[name]))
+    budgets: dict[str, Any] = {}
+    if args.max_cost_usd is not None:
+        budgets["max_cost_usd"] = args.max_cost_usd
+    if args.max_model_calls is not None:
+        budgets["max_model_calls"] = args.max_model_calls
+    args.agents = agent
+    args.hypothesis = f"Ejecución live de ReAct con {args.model} en {suite.dataset_name}"
+    args.budgets = budgets
+    args.scenario_slugs = [s for s in args.scenarios.split(",") if s]
+    args.run_info = {
+        "live": {
+            "provider": model.provider,
+            "base_url": settings.base_url,
+            "model": args.model,
+            "revision": args.revision,
+            "model_configuration": model.name,
+            "price_declared": model.price is not None,
+            "budgets": budgets,
+            "scenarios": args.scenario_slugs or "all",
+        }
+    }
+    # Sin lock versionado para la variante live: dataset y benchmark siguen siendo los de la
+    # suite base (mismos hashes); sólo cambian agente y modelo.
+    return _run(engine, f"{name}+live", live_suite, args)
+
+
 def _write_controlled(
     out: Path, document: dict[str, Any], label: str, names: dict[str, str]
 ) -> None:
@@ -290,8 +374,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             comparison = _compare(engine, args.suite, suite, args)
             print(json.dumps(comparison.get("pair_counts"), indent=2, sort_keys=True))
             return 0 if comparison["status"] != "incompatible" else 1
-        if args.command == "run":
-            report = _run(engine, args.suite, suite, args)
+        if args.command in ("run", "run-live"):
+            execute = _run_live if args.command == "run-live" else _run
+            report = execute(engine, args.suite, suite, args)
             summary = {a["agent"]["id"]: a["summary"]["task_success"] for a in report["agents"]}
             print(json.dumps(summary, indent=2, sort_keys=True))
             return 0

@@ -1,6 +1,6 @@
 # Auditoría de aceptación (tarea 13.4)
 
-Cada escenario de las ocho capabilities de `define-evaluation-lab-foundation`, con la prueba que lo verifica. Todos los tests citados están en `backend/tests/` (`integration/` usa PostgreSQL real) o en `frontend/src/`. Estado al 2026-10-01: 409 tests de backend y 17 de frontend en verde; `openspec validate --all --strict` sin errores.
+Cada escenario de las ocho capabilities de `define-evaluation-lab-foundation`, con la prueba que lo verifica. Todos los tests citados están en `backend/tests/` (`integration/` usa PostgreSQL real) o en `frontend/src/`. Estado al 2026-10-02: 414 tests de backend y 18 de frontend en verde; `openspec validate --all --strict` sin errores.
 
 Estados: **verificado** (un test lo comprueba tal como lo describe la spec), **parcial** (verificado con una diferencia o un alcance menor, explicado), **pendiente** (no se puede verificar sin una decisión o una ejecución que no se ha hecho).
 
@@ -35,7 +35,7 @@ Estados: **verificado** (un test lo comprueba tal como lo describe la spec), **p
 | Unsupported citation | `test_evaluation.py::test_citation_of_non_result_event_is_unsupported`, `::test_citation_from_another_tool_is_unsupported` | verificado |
 | Judge disagrees with oracle | `test_judge.py::test_judge_never_overrides_failed_gates`, `integration/test_judge.py::test_judge_score_is_separate_and_never_overrides_gates` | verificado (judge de fixture) |
 | Injected judge instructions | `test_judge.py::test_injected_instructions_are_data_and_get_no_credit` | verificado |
-| Calibration below threshold | `test_calibration.py::test_without_human_annotations_the_judge_stays_experimental`, `::test_threshold_and_injection_rule_on_test_annotations` | parcial: la regla se aplica, pero la doble anotación humana real (9.2) no existe y el judge sigue `experimental` |
+| Calibration below threshold | `test_calibration.py::test_without_human_annotations_the_judge_stays_experimental`, `::test_threshold_and_injection_rule_on_test_annotations` | verificado: sin anotaciones humanas adjudicadas (o con acuerdo < 0.80 o una inyección aprobada) el judge es `experimental` y no controla gates; la anotación humana real es trabajo operativo de `run-live-and-calibrate-judge` |
 
 ## experiment-comparison
 
@@ -82,7 +82,7 @@ Estados: **verificado** (un test lo comprueba tal como lo describe la spec), **p
 | Replay divergence | `test_replay.py::test_divergent_request_is_mismatch_without_fallback`, `integration/test_replays.py::test_divergent_recording_is_mismatch_without_fallback` | verificado |
 | Offline replay | `integration/test_replays.py::test_replay_reproduces_source_offline`, `integration/test_react.py::test_recorded_react_run_replays_without_calling_the_provider` | verificado |
 | Unverifiable recording | `integration/test_replays.py::test_tampered_source_trace_is_not_replayable`, `::test_redacted_source_is_not_replayable`, `::test_replay_preconditions` | verificado |
-| Remote variability | — | pendiente: requiere dos llamadas reales a un proveedor con la misma seed (7.2, ejecución live no autorizada) |
+| Remote variability | `integration/test_remote_variability.py::test_identical_requests_with_different_answers_are_kept_and_reported` | verificado con un servidor local que imita un proveedor compatible con OpenAI (peticiones idénticas, respuestas distintas): ambos runs se conservan, `distinct_outputs=2` y el manifest y la ModelConfiguration no cambian. No se ha observado con un proveedor de pago |
 | Fixture contamination | `integration/test_execution.py::test_fixture_state_is_not_shared_between_runs` | verificado |
 
 ## trace-capture
@@ -112,4 +112,4 @@ Estados: **verificado** (un test lo comprueba tal como lo describe la spec), **p
 
 ## Resultado
 
-64 de 66 escenarios verificados, 1 parcial (calibración humana del judge) y 1 pendiente (variabilidad de un proveedor remoto). El change no se archiva: 7.2 y 9.2 siguen abiertas y "Remote variability" exige una ejecución live que el responsable no ha autorizado.
+Los 66 escenarios quedan verificados y el change se archiva (specs promovidas a `openspec/specs/`). El trabajo operativo que no es un requisito del sistema —ejecución con un proveedor de pago, doble anotación humana del judge y publicar el contrato de salida de los escenarios, detectado en la ejecución live local— sigue en el change `run-live-and-calibrate-judge`.

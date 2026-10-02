@@ -1,0 +1,174 @@
+{
+  "set_id": "judge-calibration-clarity",
+  "set_version": "1.0.0",
+  "rubric": "answer-clarity@1.0.0",
+  "judge_model": {
+    "provider": "openai-compatible",
+    "model": "qwen2.5:7b",
+    "revision": "sha256:845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e"
+  },
+  "votes": {
+    "cal-01": null,
+    "cal-02": null,
+    "cal-03": null,
+    "cal-04": null,
+    "cal-05": null,
+    "cal-06": null,
+    "cal-07": null,
+    "cal-08": null,
+    "cal-09": null,
+    "cal-10": null,
+    "cal-11": null,
+    "cal-12": null,
+    "cal-13": null,
+    "cal-14": null,
+    "cal-15": null,
+    "cal-16": null,
+    "cal-17": null,
+    "cal-18": null,
+    "cal-19": null,
+    "cal-20": null,
+    "cal-21": null,
+    "cal-22": null,
+    "cal-23": null,
+    "cal-24": null,
+    "cal-25": null,
+    "cal-26": null,
+    "cal-27": null,
+    "cal-28": null,
+    "cal-29": null,
+    "cal-30": null,
+    "cal-31": null,
+    "cal-32": null
+  },
+  "details": {
+    "cal-01": {
+      "status": "error",
+      "reason": "invalid_judge_response:evidence_not_in_response"
+    },
+    "cal-02": {
+      "status": "error",
+      "reason": "invalid_judge_response:evidence_not_in_response"
+    },
+    "cal-03": {
+      "status": "error",
+      "reason": "invalid_judge_response:evidence_not_in_response"
+    },
+    "cal-04": {
+      "status": "error",
+      "reason": "invalid_judge_response:evidence_not_in_response"
+    },
+    "cal-05": {
+      "status": "error",
+      "reason": "invalid_judge_response:evidence_not_in_response"
+    },
+    "cal-06": {
+      "status": "error",
+      "reason": "invalid_judge_response:evidence_not_in_response"
+    },
+    "cal-07": {
+      "status": "error",
+      "reason": "invalid_judge_response:evidence_not_in_response"
+    },
+    "cal-08": {
+      "status": "error",
+      "reason": "invalid_judge_response:evidence_not_in_response"
+    },
+    "cal-09": {
+      "status": "error",
+      "reason": "invalid_judge_response:evidence_not_in_response"
+    },
+    "cal-10": {
+      "status": "error",
+      "reason": "invalid_judge_response:evidence_not_in_response"
+    },
+    "cal-11": {
+      "status": "error",
+      "reason": "invalid_judge_response:evidence_not_in_response"
+    },
+    "cal-12": {
+      "status": "error",
+      "reason": "invalid_judge_response:evidence_not_in_response"
+    },
+    "cal-13": {
+      "status": "error",
+      "reason": "invalid_judge_response:evidence_not_in_response"
+    },
+    "cal-14": {
+      "status": "error",
+      "reason": "invalid_judge_response:evidence_not_in_response"
+    },
+    "cal-15": {
+      "status": "error",
+      "reason": "invalid_judge_response:evidence_not_in_response"
+    },
+    "cal-16": {
+      "status": "error",
+      "reason": "invalid_judge_response:evidence_not_in_response"
+    },
+    "cal-17": {
+      "status": "error",
+      "reason": "invalid_judge_response:evidence_not_in_response"
+    },
+    "cal-18": {
+      "status": "error",
+      "reason": "invalid_judge_response:evidence_not_in_response"
+    },
+    "cal-19": {
+      "status": "error",
+      "reason": "invalid_judge_response:evidence_not_in_response"
+    },
+    "cal-20": {
+      "status": "error",
+      "reason": "invalid_judge_response:evidence_not_in_response"
+    },
+    "cal-21": {
+      "status": "error",
+      "reason": "invalid_judge_response:evidence_not_in_response"
+    },
+    "cal-22": {
+      "status": "error",
+      "reason": "invalid_judge_response:evidence_not_in_response"
+    },
+    "cal-23": {
+      "status": "error",
+      "reason": "invalid_judge_response:evidence_not_in_response"
+    },
+    "cal-24": {
+      "status": "error",
+      "reason": "invalid_judge_response:evidence_not_in_response"
+    },
+    "cal-25": {
+      "status": "error",
+      "reason": "invalid_judge_response:evidence_not_in_response"
+    },
+    "cal-26": {
+      "status": "error",
+      "reason": "invalid_judge_response:evidence_not_in_response"
+    },
+    "cal-27": {
+      "status": "error",
+      "reason": "invalid_judge_response:evidence_not_in_response"
+    },
+    "cal-28": {
+      "status": "error",
+      "reason": "invalid_judge_response:evidence_not_in_response"
+    },
+    "cal-29": {
+      "status": "unknown",
+      "reason": "injection_detected"
+    },
+    "cal-30": {
+      "status": "error",
+      "reason": "invalid_judge_response:evidence_not_in_response"
+    },
+    "cal-31": {
+      "status": "error",
+      "reason": "invalid_judge_response:evidence_not_in_response"
+    },
+    "cal-32": {
+      "status": "error",
+      "reason": "invalid_judge_response:evidence_not_in_response"
+    }
+  }
+}

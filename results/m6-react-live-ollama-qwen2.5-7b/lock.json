@@ -1,0 +1,57 @@
+{
+  "agents": {
+    "react-live-e49b8069fdb72c41": "eb56fb3910d9cfac8bc6a368e6c689d680ea5391aae1109486978aa640aaa6b8"
+  },
+  "benchmark": {
+    "content_hash": "b59318c7659772d94c5ebff0f78111443a61176d8b8ce321baa64fc883535ca2",
+    "id": "a438eeb7-296f-52ed-a747-0447331069fc",
+    "version": "1.0.0"
+  },
+  "dataset": {
+    "content_hash": "f88e82b413d089f5389734687bc60c0fce6ee215258cf527e83ae917d4ab3e7b",
+    "coverage_class": "pilot",
+    "id": "c1d9cd93-19e9-58d3-ace2-17e1bd565b34",
+    "version": "0.1.0"
+  },
+  "fixtures": {
+    "corpus:pilot-kb": "d972ead6a0cc93a03360e90296d6e84279e983e25b48d651f02123759c4b1cb1",
+    "tool:calculator": "ac0af7eb1fb17edd9c7983a94df62fda8c376f5118561fb647bbc6368b20667c",
+    "tool:email-send": "1960487240c1b4fef299cf29a88544b710d9dd6eeb04477fe2ba08b2707d4da7",
+    "tool:inventory-lookup": "0b16f5ed5d1ebb3666aa79f932075aba7cf1ef115f2d462c55b02c5e8bf2d7bf",
+    "tool:kb-search": "e806c83d1a7cb67fbf7a73978f98d0faaa55181f92ea07a3fcc81c0901e7a5f5",
+    "tool:order-create": "77c99bd9d33b18c577a737a1c53aeed6c315da2b2fbab1386d3b8ba047c3de18",
+    "tool:price-lookup": "2df46dc227cca5ed0945dc61d79564c200a6ba00adba5ef3d0cc9aa6743510ee",
+    "tool:refund-issue": "36f21933ac210d92ae068a1b1815e418a5b845988d16b6873dcf8f17b0f3d0e5",
+    "tool:unit-converter": "e2ccb97b2302b773b7eaf6d208d7241c1c35425f74f2b18707e97299d4b1fd94"
+  },
+  "models": {
+    "live-e49b8069fdb72c41": "fd960d23fc0ee21028f0f029ccf5f63bc8fc8c3f2c67ab8b422b83f7797fb022"
+  },
+  "prices": {},
+  "scenarios": {
+    "pilot-er-ambiguous-timeout": "a4282f53016fbdeb3f8842839f2ede32d559a5f043fdb2ed1ae43ef2edd99013",
+    "pilot-er-transient-retry": "48c1aa79fc5e15849d99a4fab39b6085c3e0f8b32b6e5f3e94a858d8e0257566",
+    "pilot-ms-convert-then-sum": "dec725bf6b5f63f339ee66e4917e7afc202152e427cf0e6962b3f6bc86f0600b",
+    "pilot-ms-stock-then-order": "1653d25048d609c0de13002e6b4cdb0a28ca856dd31c57951294c4cd05c2f45a",
+    "pilot-pc-injection-exfiltration": "6ad6898c1e43d954d22022f1fe0d34bfaf6504fc0d219f6c035534129af573ae",
+    "pilot-pc-refund-denied": "d784c460e5a984a66797390379dace1d4e29e32e091ef5f2c090774f815c9afa",
+    "pilot-rs-arithmetic-chain": "de7e5191f6f7c89be3e967c6403373e1398c32ea0c5a3f900eb34f5c00496268",
+    "pilot-rs-constraints": "1f8bf38f1da6c1af85d8608dbf8e4bfa47d937a21e2c01dff69be9e34c740785",
+    "pilot-rt-returns-policy": "40c57522f57bbadb16996cb79b9f67af0dd68fe350443810c1029b6f594d1d2d",
+    "pilot-rt-unanswerable": "e6929d61e0eb8d9115fc172983a5b23bbbda8cc889f10d5accfa158d0fed2917",
+    "pilot-ta-order-quantity": "1d60cd5bc41426389c14e57a14e601e980fb8faad0d20fee872b7ce90689ad53",
+    "pilot-ta-unit-conversion": "8249fc9dfebbb40c4048b0f38203c37e5c3f34f3389a5456e7605f7622acb553",
+    "pilot-ts-no-tool-needed": "58c0116c55de1438a21249f0e21201e2df6667b9764f86e7ee4d7f7f80cbdcb3",
+    "pilot-ts-stock-lookup": "3a370630ac668d762e606a29c9b7afdd78c4726d8f96630d9e79b4b6dfeb18af"
+  },
+  "tools": {
+    "calculator": "2dd16f3358ba87d40505514b6011ce24d8bb86a99b0aa52e6d7995f78e59c291",
+    "email-send": "7a32435689b999871f5c02247e87dbc91ce19661aaaf57ef3b4429f87f7cd072",
+    "inventory-lookup": "812b86d1b29da71f035382ce0be6c6730bf3054d03a718931bf5a78a2b24f8bb",
+    "kb-search": "8a081e6bf653475c4478b6c0e7be97640bcee55c3e979fbb78b99696ae6223b4",
+    "order-create": "749c1cc000796ca61d48bc13f9c7c4633f534ce08b1c397b96973cb2a22c5a8d",
+    "price-lookup": "917e96c852df41fc5c156dba89641120d51b9878f8b78eecf9cf85991f81f9ed",
+    "refund-issue": "9da2cd9c5eeba0bce87958f669362b592d5ace09ed30f9bf3ae3b8dc2e942c93",
+    "unit-converter": "72c5fb548a447572c2cf0bf2d1bb73e0ec2a75cc09e89fc3c3cea12941db6651"
+  }
+}

@@ -179,3 +179,48 @@ def test_live_provider_is_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -
         live_enabled=True, base_url="http://127.0.0.1:9", api_key=SecretStr(API_KEY)
     )
     assert set(live_providers(ready)) == {LIVE_PROVIDER}
+
+
+def test_live_commands_refuse_without_enabled_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    from evallab.benchmarks.cli import main as benchmark_cli
+    from evallab.evaluation.calibration_cli import main as calibration_cli
+
+    for name in ("MODEL_GATEWAY_LIVE_ENABLED", "MODEL_GATEWAY_BASE_URL", "MODEL_GATEWAY_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    with pytest.raises(SystemExit, match="proveedor live deshabilitado"):
+        calibration_cli(["votes", "--model", "m", "--out", "unused.json"])
+    with pytest.raises(SystemExit, match="proveedor live deshabilitado"):
+        benchmark_cli(["run-live", "pilot", "--model", "m", "--out", "unused"])
+
+
+def test_judge_votes_use_the_live_provider_and_never_the_annotations(
+    stub: tuple[Stub, str], monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    from evallab.evaluation.calibration_cli import main as calibration_cli
+
+    state, url = stub
+    state.body = {
+        "id": "r",
+        "model": "m",
+        "choices": [
+            {
+                "message": {
+                    "content": json.dumps(
+                        {"abstain": True, "rating": None, "evidence": [], "rationale": "x"}
+                    )
+                },
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+    }
+    monkeypatch.setenv("MODEL_GATEWAY_LIVE_ENABLED", "true")
+    monkeypatch.setenv("MODEL_GATEWAY_BASE_URL", url)
+    monkeypatch.setenv("MODEL_GATEWAY_API_KEY", API_KEY)
+    out = tmp_path / "votes.json"
+    assert calibration_cli(["votes", "--model", "m", "--out", str(out)]) == 0
+    document = json.loads(out.read_text("utf-8"))
+    assert len(document["votes"]) == 32 and set(document["votes"].values()) == {None}
+    assert len(state.requests) == 32
+    assert API_KEY not in out.read_text("utf-8")
+    assert all("anotador" not in json.dumps(r) for r in state.requests)

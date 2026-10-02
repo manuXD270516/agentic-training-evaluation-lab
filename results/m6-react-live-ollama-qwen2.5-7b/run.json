@@ -1,0 +1,28 @@
+{
+  "agents": {
+    "react-live-e49b8069fdb72c41": "be408426-cf0b-5cb3-9735-4b163d1c71f6"
+  },
+  "cells_executed": 14,
+  "cells_planned": 14,
+  "evallab_version": "0.1.0",
+  "experiment_id": "4b00f7a7-5b16-4f23-a432-f010b02619c5",
+  "finished_at": "2026-10-02T07:48:35.748374+00:00",
+  "live": {
+    "base_url": "http://127.0.0.1:11434/v1",
+    "budgets": {},
+    "model": "qwen2.5:7b",
+    "model_configuration": "live-e49b8069fdb72c41",
+    "price_declared": false,
+    "provider": "openai-compatible",
+    "revision": "sha256:845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+    "scenarios": "all"
+  },
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python": "3.14.7",
+  "repetitions": 1,
+  "seeds": [
+    11
+  ],
+  "suite": "pilot+live",
+  "wall_clock_s": 43.659
+}
