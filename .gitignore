@@ -36,3 +36,4 @@ volumes/
 .idea/
 .DS_Store
 Thumbs.db
+frontend/public/data/

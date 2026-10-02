@@ -24,6 +24,7 @@ evallab-migrate = "evallab.db.migrate:main"
 evallab-verify-trace = "evallab.verify_trace:main"
 evallab-benchmark = "evallab.benchmarks.cli:main"
 evallab-judge-calibration = "evallab.evaluation.calibration_cli:main"
+evallab-export-static = "evallab.static_export:main"
 
 [build-system]
 requires = ["uv_build==0.12.20"]

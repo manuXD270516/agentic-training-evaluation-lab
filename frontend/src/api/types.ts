@@ -212,3 +212,20 @@ export interface Evaluation {
   created_at: string;
   completed_at: string | null;
 }
+
+export interface ComparisonSummary {
+  id: string;
+  baseline: string;
+  candidate: string;
+  status: string;
+  decision: { status: string; reasons: string[] };
+  export_digest: string;
+}
+
+export interface Snapshot {
+  generated_at: string;
+  commit: string | null;
+  access: string;
+  counts: Record<string, number>;
+  note: string;
+}

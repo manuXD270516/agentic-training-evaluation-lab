@@ -13,6 +13,8 @@ const proxy = {
 };
 
 export default defineConfig({
+  // GitHub Pages sirve el sitio bajo /<repo>/; EVALLAB_BASE lo fija en la build estática.
+  base: process.env["EVALLAB_BASE"] ?? "/",
   plugins: [react()],
   server: {
     host: "127.0.0.1",

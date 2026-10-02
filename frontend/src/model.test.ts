@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { traceQuery } from "./api/client";
+import { pageTrace, traceQuery } from "./api/client";
 import type { ScoreStatus } from "./api/types";
 import {
   ALL,
@@ -12,7 +12,7 @@ import {
   parseRoute,
   statusDisplay,
 } from "./model";
-import { EVENT, RUN, cell } from "./testing/fixtures";
+import { EVENT, RUN, cell, trace } from "./testing/fixtures";
 import { cursorBefore } from "./views/RunView";
 
 describe("statusDisplay", () => {
@@ -88,6 +88,23 @@ describe("trace paging", () => {
     expect(cursorBefore(1)).toBeNull();
     expect(cursorBefore(3)).toBeNull();
     expect(cursorBefore(10)).toBe(7);
+  });
+
+  it("pages a full static trace like the API keyset pagination", () => {
+    const base = trace("complete");
+    const event = base.events[0]!;
+    const full = {
+      ...base,
+      page: null,
+      events: [1, 2, 3].map((sequence) => ({ ...event, event_id: `e${sequence}`, sequence })),
+    };
+    const first = pageTrace(full, null, 2);
+    expect(first.events.map((e) => e.sequence)).toEqual([1, 2]);
+    expect(first.page?.next_after_sequence).toBe(2);
+    const last = pageTrace(full, 2, 2);
+    expect(last.events.map((e) => e.sequence)).toEqual([3]);
+    expect(last.page?.next_after_sequence).toBeNull();
+    expect(pageTrace(full, null, 3).page?.next_after_sequence).toBeNull();
   });
 
   it("formats missingness ranges", () => {

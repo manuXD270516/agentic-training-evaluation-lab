@@ -1,0 +1,94 @@
+name: pages
+
+# Dashboard estático de sólo lectura en GitHub Pages. Sin backend ni secretos: el job levanta
+# una base efímera, regenera los resultados scripted y de fixture registrados en `results/`
+# (sin modelos ni red externa), los exporta con las reglas de la demo (EVALLAB_READ_ONLY, sin
+# oráculos) y publica la build estática del frontend.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  DO_NOT_TRACK: "1"
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.6-pg18-trixie@sha256:78bf48b801e792f99e3ac62b5036fd3876e9be48afda16c1e331af1c75ceb2ff
+        env:
+          POSTGRES_DB: evallab
+          POSTGRES_USER: evallab
+          # Contenedor efímero del job, sólo accesible desde el runner; no es un secreto.
+          POSTGRES_PASSWORD: pages-ephemeral
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U evallab -d evallab"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+    env:
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: evallab
+      POSTGRES_USER: evallab
+      POSTGRES_PASSWORD: pages-ephemeral
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.12.20"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Regenerar resultados scripted y de fixture
+        working-directory: backend
+        run: |
+          uv sync --locked
+          uv run --locked evallab-migrate
+          uv run --locked evallab-benchmark run pilot --repetitions 5 --out "$RUNNER_TEMP/m5"
+          uv run --locked evallab-benchmark run retrieval-v1 --repetitions 5 --out "$RUNNER_TEMP/m9"
+          uv run --locked evallab-benchmark run v1 --repetitions 5 --out "$RUNNER_TEMP/v1"
+          uv run --locked evallab-benchmark compare pilot-models \
+            --baseline pilot-react-fixture --candidate pilot-planner-executor-fixture \
+            --repetitions 5 --out "$RUNNER_TEMP/m7"
+      - name: Exportar instantánea pública (sin oráculos)
+        working-directory: backend
+        run: |
+          uv run --locked evallab-export-static --out ../frontend/public/data \
+            --comparison "$RUNNER_TEMP/m7/controlled.json"
+      - name: Build estática
+        env:
+          VITE_EVALLAB_STATIC: "1"
+          EVALLAB_BASE: /${{ github.event.repository.name }}/
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter evallab-frontend run build
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: frontend/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
