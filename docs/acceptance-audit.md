@@ -1,6 +1,6 @@
 # Auditoría de aceptación (tarea 13.4)
 
-Cada escenario de las ocho capabilities de `define-evaluation-lab-foundation`, con la prueba que lo verifica. Todos los tests citados están en `backend/tests/` (`integration/` usa PostgreSQL real) o en `frontend/src/`. Estado al 2026-10-02: 414 tests de backend y 18 de frontend en verde; `openspec validate --all --strict` sin errores.
+Cada escenario de las ocho capabilities de `define-evaluation-lab-foundation`, con la prueba que lo verifica. Todos los tests citados están en `backend/tests/` (`integration/` usa PostgreSQL real) o en `frontend/src/`. Estado al 2026-10-02: 413 tests de backend y 18 de frontend en verde; `openspec validate --all --strict` sin errores.
 
 Estados: **verificado** (un test lo comprueba tal como lo describe la spec), **parcial** (verificado con una diferencia o un alcance menor, explicado), **pendiente** (no se puede verificar sin una decisión o una ejecución que no se ha hecho).
 

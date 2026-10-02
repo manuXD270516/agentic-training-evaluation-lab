@@ -2,20 +2,22 @@
 
 Laboratorio para medir éxito, herramientas, argumentos, evidencia, recuperación, latencia y coste de sistemas agénticos mediante experimentos reproducibles.
 
-**Estado (2026-10-01).** Ningún resultado de este repositorio mide un LLM: todas las ejecuciones usan agentes scripted o "modelos" de fixture (guiones versionados, sin red ni llamadas de pago). El detalle y la evidencia de cada tarea están en [tasks.md](openspec/changes/define-evaluation-lab-foundation/tasks.md).
+**Dashboard público (sólo lectura, sin backend): https://manuxd270516.github.io/agentic-training-evaluation-lab/** — instantánea regenerada en cada push por el workflow `pages` a partir de los benchmarks scripted y de fixture.
+
+**Estado (2026-10-02).** El change de fundación está implementado, verificado escenario por escenario ([auditoría](docs/acceptance-audit.md)) y archivado; sus specs viven en `openspec/specs/`. Casi todos los resultados usan agentes scripted o "modelos" de fixture (guiones versionados) y prueban el harness, no un LLM. Las únicas mediciones con un modelo real son una corrida local gratuita con `qwen2.5:7b` (Ollama): 1 de 14 escenarios del piloto, y los votos del judge con ese modelo, inválidos en 31 de 32 ítems. La ejecución con un proveedor de pago y la anotación humana del judge quedan configuradas y pendientes en el change [`run-live-and-calibrate-judge`](openspec/changes/run-live-and-calibrate-judge/proposal.md).
 
 | Hito | Estado |
 |---|---|
 | M0–M3 | Bootstrap, modelo de experimentos, runner scripted con gateway de tools, límites, retries y leases; suite determinística `deterministic-core@1.0.0` y perfil `core-metrics@1.0.0` |
 | M4 | Persistencia idempotente y redactada de trazas, export verificable, replay estricto offline y spans OpenTelemetry correlacionados (la evidencia no depende del collector) |
 | M5 | Piloto sintético `agentic-benchmark-pilot@0.1.0` (14 escenarios, lock de hashes) y [reporte descriptivo de 5 repeticiones](results/m5-pilot-scripted/report.md) con dos agentes scripted (mide el harness) |
-| M6 | Gateway de modelo neutral (uso, coste por price snapshot, errores tipados) y ReAct `react@1.0.0` con replay de modelo, verificados con modelos de fixture. **Pendiente:** elegir proveedor, modelo y presupuesto live (decisión y gasto del responsable); el adaptador live existe desactivado |
+| M6 | Gateway de modelo neutral (uso, coste por price snapshot, errores tipados) y ReAct `react@1.0.0` con replay de modelo, verificados con modelos de fixture. Adaptador `openai-compatible` desactivado por defecto y [`run-live`](docs/live-run.md) con revisión, tarifa y límite de coste; [corrida live local con Ollama](results/m6-react-live-ollama-qwen2.5-7b/report.md) (1/14). **Pendiente:** ejecución con proveedor de pago (clave y presupuesto del responsable) |
 | M7 | Planner/Executor `planner_executor@1.0.0` (plan validado, dependencias, presupuesto global) y [comparación descriptiva pareada](results/m7-react-vs-planner-fixture/comparison.md) con ReAct sobre fixtures (sus diferencias las fija el guion) |
-| M8 | Judge auxiliar sin tools (rúbrica y prompt versionados, abstención, suite de inyección, `scope=judge`, nunca cambia gates) con consumo aparte del agente. **Pendiente:** doble anotación humana del [set de calibración](docs/judge-calibration.md); el judge es `experimental` |
+| M8 | Judge auxiliar sin tools (rúbrica y prompt versionados, abstención, suite de inyección, `scope=judge`, nunca cambia gates) con consumo aparte del agente. [Set de calibración](docs/judge-calibration.md) con plantilla, votos (`votes`) y análisis; votos reales con `qwen2.5:7b` inválidos. **Pendiente:** doble anotación humana; el judge es `experimental` |
 | M9 | Corpus, chunks, embeddings (`hash-embed@1.0.0`, léxico y determinista) y retriever exacto versionados en PGVector; `agentic-retrieval-v1` (10 escenarios) con recall/MRR@k y citas verificadas contra qrels privados; [ejecución scripted](results/m9-retrieval-scripted/report.md) |
 | M10 | Dashboard React de sólo lectura (`frontend/`): experimentos, task_success por agente y categoría con cobertura y rango de missingness, métricas con una columna por estado (pass, fail, unknown, N/A, error), celdas ausentes visibles, filtros por categoría, agente, estado y modo live/replay, y navegación score → evento de la traza paginada con versiones y trazas incompletas señaladas |
 | M11 | Comparación controlada `paired-comparison@1.0.0`: comparability gate (dataset, benchmark, modo, suite y perfil), pares completos sin imputación, gate de política por violación crítica nueva, bootstrap pareado por escenario estratificado por categoría (10 000 remuestreos, seed 2026) con márgenes de no inferioridad y regresión, gate de latencia p95 y export con manifests, reportes, evidencia y digest. [Export de la comparación M7](results/m11-react-vs-planner-controlled/controlled.md): `fail` por la inyección obedecida del candidato; con el piloto (2 escenarios por categoría) no se calcula intervalo |
-| M12 | [`agentic-benchmark-v1@1.0.0`](docs/benchmark-v1.md): 70 escenarios sintéticos, 10 por categoría, 42 dev / 28 held-out por familias (`complete_v1`), licencia CC-BY-4.0 pendiente de confirmar y held-out declarado público. [Demo de sólo lectura](docs/demo.md) (`EVALLAB_READ_ONLY`, token para operaciones privadas, oráculos ocultos), probada en local y no desplegada. [Reproducción offline desde un clon limpio](results/m12-v1-offline-repro/report.md) con `scripts/reproduce-offline.ps1`: los cuatro locks coinciden, 700 celdas de v1 y traza verificada |
+| M12 | [`agentic-benchmark-v1@1.0.0`](docs/benchmark-v1.md): 70 escenarios sintéticos, 10 por categoría, 42 dev / 28 held-out por familias (`complete_v1`), licencia CC-BY-4.0 pendiente de confirmar y held-out declarado público. [Demo de sólo lectura](docs/demo.md) (`EVALLAB_READ_ONLY`, token para operaciones privadas, oráculos ocultos), y [dashboard estático en GitHub Pages](https://manuxd270516.github.io/agentic-training-evaluation-lab/) generado con `evallab-export-static`. [Reproducción offline desde un clon limpio](results/m12-v1-offline-repro/report.md) con `scripts/reproduce-offline.ps1`: los cuatro locks coinciden, 700 celdas de v1 y traza verificada |
 
 API disponible (localhost:8000; esquema OpenAPI en `/docs`):
 
@@ -46,16 +48,16 @@ API disponible (localhost:8000; esquema OpenAPI en `/docs`):
 | `GET /comparisons?baseline=&candidate=&variable=&baseline_mode=&candidate_mode=` | Comparación controlada de dos experimentos sellados (protocolo, comparabilidad, pares, gates, decisión y `export_digest`); también `evallab-benchmark compare-experiments` |
 | `GET /runs/{id}/evaluations`, `GET /evaluations/{id}` | Historial de evaluaciones con report, scores y su estado (`pass/fail/unknown/not_applicable/error`) |
 
-Primer change: [define-evaluation-lab-foundation](openspec/changes/define-evaluation-lab-foundation/proposal.md).
+Change de fundación (archivado): [define-evaluation-lab-foundation](openspec/changes/archive/2026-10-02-define-evaluation-lab-foundation/proposal.md). Siguiente: [run-live-and-calibrate-judge](openspec/changes/run-live-and-calibrate-judge/proposal.md).
 
-- [Diseño: filosofía, dominio, arquitectura, interfaces y toolchain (§9)](openspec/changes/define-evaluation-lab-foundation/design.md)
-- [Formato del benchmark](openspec/changes/define-evaluation-lab-foundation/benchmark-format.md)
-- [Catálogo de métricas](openspec/changes/define-evaluation-lab-foundation/metrics.md)
-- [Formato de trazas](openspec/changes/define-evaluation-lab-foundation/trace-format.md)
-- [Roadmap M0–M12](openspec/changes/define-evaluation-lab-foundation/roadmap.md)
-- [Tareas](openspec/changes/define-evaluation-lab-foundation/tasks.md)
+- [Diseño: filosofía, dominio, arquitectura, interfaces y toolchain (§9)](openspec/changes/archive/2026-10-02-define-evaluation-lab-foundation/design.md)
+- [Formato del benchmark](openspec/changes/archive/2026-10-02-define-evaluation-lab-foundation/benchmark-format.md)
+- [Catálogo de métricas](openspec/changes/archive/2026-10-02-define-evaluation-lab-foundation/metrics.md)
+- [Formato de trazas](openspec/changes/archive/2026-10-02-define-evaluation-lab-foundation/trace-format.md)
+- [Roadmap M0–M12](openspec/changes/archive/2026-10-02-define-evaluation-lab-foundation/roadmap.md)
+- [Tareas](openspec/changes/archive/2026-10-02-define-evaluation-lab-foundation/tasks.md)
 
-Las specs del change describen comportamiento futuro. `openspec/specs` permanecerá sin specs consolidadas hasta implementar, verificar y archivar el change. Validar documentación no demuestra que el sistema funcione.
+Las specs consolidadas de las ocho capabilities están en `openspec/specs/`; cada escenario enlaza con su test en la [auditoría de aceptación](docs/acceptance-audit.md). Validar documentación no demuestra que el sistema funcione: la evidencia son los tests y los resultados de `results/`.
 
 ## Estructura
 
@@ -77,6 +79,7 @@ compose.yaml             PostgreSQL 18.6 con pgvector, migrate (una vez), API, w
 otel/collector.yaml      Configuración del collector opcional (sólo log de spans)
 .env.example             Configuración de ejemplo sin credenciales
 .github/workflows/ci.yml CI: OpenSpec, backend, frontend y smoke de Compose
+.github/workflows/pages.yml Dashboard estático en GitHub Pages (base efímera, sin secretos)
 ```
 
 ## Requisitos
